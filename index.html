@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Snipcast</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #1b1b1f;
+        border-radius: 12px;
+        clip-path: inset(0 round 12px);
+      }
+      #root {
+        border-radius: 12px;
+        overflow: hidden;
+        min-height: 100%;
+        background: #1b1b1f;
+        clip-path: inset(0 round 12px);
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
