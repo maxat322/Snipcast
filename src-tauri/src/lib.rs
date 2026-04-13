@@ -58,7 +58,11 @@ fn refresh_paste_target(app: &tauri::AppHandle) {
     #[cfg(target_os = "windows")]
     {
         if let Ok(mut g) = app.state::<Mutex<PasteTarget>>().lock() {
-            *g = paste_target::capture_target_windows();
+            let captured = paste_target::capture_target_windows();
+            // Do not erase the last known foreign window when Snipcast is focused.
+            if captured.win_hwnd.is_some() {
+                *g = captured;
+            }
         }
     }
 }

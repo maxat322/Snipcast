@@ -3,6 +3,7 @@
 //! без `keystroke` в AppleScript (он часто ломается). Запасная активация — короткий osascript.
 //! Windows: enigo.
 
+#[cfg(target_os = "macos")]
 use std::sync::Mutex;
 
 #[derive(Clone, Default)]
@@ -59,8 +60,17 @@ pub fn paste_into_previous(target: &PasteTarget) {
         }
     }
     #[cfg(target_os = "windows")]
-    if let Some(hwnd) = target.win_hwnd {
-        let _ = win::activate_and_paste_ctrl_v(hwnd);
+    {
+        let hwnd = target
+            .win_hwnd
+            // Fallback: after hiding the palette, foreground usually returns
+            // to the previous app; use it if no snapshot hwnd is stored.
+            .or_else(win::foreground_hwnd_if_other_process);
+        if let Some(hwnd) = hwnd {
+            let _ = win::activate_and_paste_ctrl_v(hwnd);
+        } else {
+            eprintln!("[snipcast] win_hwnd отсутствует — не удалось определить окно для вставки");
+        }
     }
 }
 
@@ -153,16 +163,20 @@ mod macos {
 
 #[cfg(target_os = "windows")]
 mod win {
-    use enigo::{Direction, Enigo, Key, Keyboard, Settings};
     use windows_sys::Win32::Foundation::HWND;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_CONTROL,
     };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowThreadProcessId, IsWindow, SendMessageW, SetForegroundWindow,
+        WM_PASTE,
+    };
+    const VK_V: u16 = 0x56;
 
     pub fn foreground_hwnd_if_other_process() -> Option<isize> {
         unsafe {
             let hwnd = GetForegroundWindow();
-            if hwnd.0.is_null() {
+            if hwnd.is_null() {
                 return None;
             }
             let mut pid: u32 = 0;
@@ -170,25 +184,84 @@ mod win {
             if pid == 0 || pid == std::process::id() {
                 return None;
             }
-            Some(hwnd.0 as isize)
+            Some(hwnd as isize)
         }
     }
 
     pub fn activate_and_paste_ctrl_v(hwnd: isize) -> Result<(), String> {
+        let hwnd = hwnd as HWND;
         unsafe {
-            SetForegroundWindow(HWND(hwnd as *mut std::ffi::c_void));
+            if IsWindow(hwnd) == 0 {
+                return Err("target window is no longer valid".into());
+            }
         }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        enigo
-            .key(Key::Control, Direction::Press)
-            .map_err(|e| e.to_string())?;
-        enigo
-            .key(Key::Unicode('v'), Direction::Click)
-            .map_err(|e| e.to_string())?;
-        enigo
-            .key(Key::Control, Direction::Release)
-            .map_err(|e| e.to_string())?;
+
+        // Windows may reject a single foreground request; retry briefly.
+        let mut focused = false;
+        for _ in 0..3 {
+            unsafe {
+                SetForegroundWindow(hwnd);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            unsafe {
+                if GetForegroundWindow() == hwnd {
+                    focused = true;
+                    break;
+                }
+            }
+        }
+
+        if !focused {
+            // Some apps still accept WM_PASTE even when focus transfer is flaky.
+            unsafe {
+                SendMessageW(hwnd, WM_PASTE, 0, 0);
+            }
+            return Ok(());
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        if send_ctrl_v().is_err() {
+            unsafe {
+                SendMessageW(hwnd, WM_PASTE, 0, 0);
+            }
+        }
         Ok(())
+    }
+
+    fn send_ctrl_v() -> Result<(), String> {
+        let inputs = [
+            key_input(VK_CONTROL, false),
+            key_input(VK_V, false),
+            key_input(VK_V, true),
+            key_input(VK_CONTROL, true),
+        ];
+
+        let sent = unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            )
+        };
+        if sent == inputs.len() as u32 {
+            Ok(())
+        } else {
+            Err("SendInput failed to send full Ctrl+V sequence".into())
+        }
+    }
+
+    fn key_input(vk: u16, key_up: bool) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: if key_up { KEYEVENTF_KEYUP } else { 0 },
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
     }
 }
