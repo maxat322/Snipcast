@@ -20,6 +20,24 @@
         "skipTaskbar": true,
         "center": true,
         "focus": true
+      },
+      {
+        "label": "settings",
+        "title": "Настройки — Snipcast",
+        "width": 880,
+        "height": 640,
+        "minWidth": 720,
+        "minHeight": 480,
+        "resizable": true,
+        "visible": false,
+        "decorations": true,
+        "transparent": false,
+        "shadow": true,
+        "backgroundColor": "#1b1b1f",
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "center": true,
+        "focus": true
       }
     ]
   }

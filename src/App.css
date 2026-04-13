@@ -99,7 +99,7 @@ body {
 }
 
 .palette__item {
-  padding: 10px 12px;
+  padding: 6px 10px;
   border-radius: 8px;
   cursor: pointer;
 }
@@ -130,21 +130,130 @@ body {
 }
 
 .palette__item--depth-1 {
-  padding-left: 28px;
+  padding-left: 22px;
   border-left: 2px solid #3a3a44;
-  margin-left: 8px;
+  margin-left: 6px;
+}
+
+.palette__breadcrumb {
+  padding-bottom: 6px;
+}
+
+.palette__back {
+  border: none;
+  background: transparent;
+  color: #8b8b98;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.palette__back:hover {
+  color: #c4c4ce;
 }
 
 .palette__item-title {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.25;
   color: #f4f4f8;
 }
 
 .palette__item-preview {
-  margin-top: 2px;
-  font-size: 12px;
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 1.3;
   color: #8b8b98;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette__folder-icon {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 2px;
+  color: #7a7a88;
+}
+
+.palette__item--selected .palette__folder-icon {
+  color: #a0a0b0;
+}
+
+.palette__item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.palette__item-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.palette__chevron {
+  flex-shrink: 0;
+  font-size: 18px;
+  font-weight: 300;
+  line-height: 1;
+  color: #6b6b78;
+  padding: 0 2px;
+}
+
+.palette__section {
+  list-style: none;
+  margin: 0;
+  padding: 10px 10px 4px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.palette__section-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b6b78;
+}
+
+.palette__subhit {
+  list-style: none;
+  margin: 0;
+  padding: 5px 10px 5px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+
+.palette__subhit:hover {
+  background: #222228;
+}
+
+.palette__subhit--selected {
+  background: #2a2e42;
+  border-left-color: #5c6bc0;
+}
+
+.palette__subhit--selected:hover {
+  background: #32384e;
+}
+
+.palette__subhit-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #c8c8d4;
+  line-height: 1.3;
+}
+
+.palette__subhit-preview {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  color: #7a7a88;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
