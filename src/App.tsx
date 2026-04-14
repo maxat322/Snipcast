@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { TemplateChild, TemplateRow } from "./types";
@@ -37,19 +44,54 @@ function dedupeTemplatesById(rows: TemplateRow[]): TemplateRow[] {
   return out;
 }
 
-type SearchEntry =
-  | { kind: "section"; key: string; title: string }
-  | {
-      kind: "hit";
-      key: string;
-      title: string;
-      preview: string;
-      pasteText: string;
-    };
+type SearchHit = {
+  key: string;
+  title: string;
+  preview: string;
+  pasteText: string;
+};
+
+/** Кадр навигации внутри вложенных подпунктов */
+type DrillFrame = {
+  title: string;
+  items: TemplateChild[];
+};
 
 type VisibleRow =
   | { kind: "top"; row: TemplateRow }
-  | { kind: "nested"; parent: TemplateRow; child: TemplateChild };
+  | { kind: "nested"; child: TemplateChild; pathKey: string };
+
+function visibleIsSeparator(v: VisibleRow): boolean {
+  if (v.kind === "top") return !!v.row.isSeparator;
+  return !!v.child.isSeparator;
+}
+
+/** Подсветка всех вхождений запроса (без учёта регистра). */
+function highlightText(text: string, query: string): ReactNode {
+  const q = query.trim();
+  if (!q) return text;
+  const ql = q.toLowerCase();
+  const nodes: ReactNode[] = [];
+  let i = 0;
+  let mk = 0;
+  while (i < text.length) {
+    const rest = text.slice(i);
+    const rel = rest.toLowerCase().indexOf(ql);
+    if (rel < 0) {
+      nodes.push(rest);
+      break;
+    }
+    if (rel > 0) nodes.push(text.slice(i, i + rel));
+    const end = i + rel + q.length;
+    nodes.push(
+      <mark key={`hm-${mk++}`} className="palette__hit-mark">
+        {text.slice(i + rel, end)}
+      </mark>,
+    );
+    i = end;
+  }
+  return <>{nodes}</>;
+}
 
 function getPasteText(row: TemplateRow | TemplateChild): string {
   if ("children" in row && row.children && row.children.length > 0) {
@@ -61,83 +103,131 @@ function getPasteText(row: TemplateRow | TemplateChild): string {
   return "";
 }
 
-/** Результаты поиска: подзаголовки секций + только вставляемые «хиты» (навигация только по hit). */
-function buildSearchEntries(rows: TemplateRow[], query: string): SearchEntry[] {
+function flattenLeafTemplates(children: TemplateChild[]): TemplateChild[] {
+  const acc: TemplateChild[] = [];
+  for (const c of children) {
+    if (c.isSeparator) continue;
+    if (c.children && c.children.length > 0) {
+      acc.push(...flattenLeafTemplates(c.children));
+    } else {
+      acc.push(c);
+    }
+  }
+  return acc;
+}
+
+type TierHit = {
+  key: string;
+  title: string;
+  preview: string;
+  pasteText: string;
+};
+
+/** Результаты поиска: сначала совпадения по заголовкам, затем по тексту шаблона (без заголовков секций). */
+function buildSearchHits(rows: TemplateRow[], query: string): SearchHit[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
 
-  const out: SearchEntry[] = [];
+  const out: SearchHit[] = [];
   const usedHitKeys = new Set<string>();
 
-  for (const r of rows) {
-    const matchSelf =
-      r.title.toLowerCase().includes(q) || r.preview.toLowerCase().includes(q);
-    const childMatches =
-      r.children?.filter(
-        (c) =>
-          c.title.toLowerCase().includes(q) || c.preview.toLowerCase().includes(q),
-      ) ?? [];
-    const hasKids = !!(r.children && r.children.length > 0);
-    const parentPaste = getPasteText(r).trim();
+  const pushHit = (key: string, title: string, preview: string, pasteText: string) => {
+    const pt = pasteText.trim();
+    if (!pt || usedHitKeys.has(key)) return;
+    usedHitKeys.add(key);
+    out.push({ key, title, preview, pasteText: pt });
+  };
 
-    const pushHit = (key: string, title: string, preview: string, pasteText: string) => {
-      const pt = pasteText.trim();
-      if (!pt || usedHitKeys.has(key)) return;
-      usedHitKeys.add(key);
-      out.push({ kind: "hit", key, title, preview, pasteText: pt });
-    };
+  const titleTier: TierHit[] = [];
+  const bodyTier: TierHit[] = [];
+
+  const pushTier = (arr: TierHit[], key: string, title: string, preview: string, pasteText: string) => {
+    arr.push({ key, title, preview, pasteText });
+  };
+
+  function walkLeavesForSearch(children: TemplateChild[], rowId: string) {
+    for (const c of children) {
+      if (c.isSeparator) continue;
+      if (c.children && c.children.length > 0) {
+        walkLeavesForSearch(c.children, rowId);
+      } else {
+        const t = c.title.toLowerCase().includes(q);
+        const prev = c.preview.toLowerCase().includes(q);
+        const body = c.pasteText.toLowerCase().includes(q);
+        const pt = getPasteText(c);
+        if (t) {
+          pushTier(titleTier, `hit-${rowId}-${c.id}`, c.title, c.preview, pt);
+        } else if (prev || body) {
+          pushTier(bodyTier, `hit-${rowId}-${c.id}`, c.title, c.preview, pt);
+        }
+      }
+    }
+  }
+
+  for (const r of rows) {
+    if (r.isSeparator) continue;
+    const hasKids = !!(r.children && r.children.length > 0);
+    const parentPaste = (r.pasteText ?? "").trim();
 
     if (hasKids) {
-      const kidsToShow =
-        childMatches.length > 0
-          ? childMatches
-          : matchSelf
-            ? r.children!
-            : [];
-
-      if (kidsToShow.length > 0) {
-        const before = out.length;
-        out.push({ kind: "section", key: `sec-${r.id}`, title: r.title });
-        for (const c of kidsToShow) {
-          pushHit(`hit-${r.id}-${c.id}`, c.title, c.preview, getPasteText(c));
+      if (r.title.toLowerCase().includes(q)) {
+        for (const leaf of flattenLeafTemplates(r.children!)) {
+          if (leaf.isSeparator) continue;
+          pushTier(
+            titleTier,
+            `hit-${r.id}-${leaf.id}`,
+            leaf.title,
+            leaf.preview,
+            getPasteText(leaf),
+          );
         }
-        if (out.length === before + 1) {
-          out.pop();
-        }
-      } else if (matchSelf && parentPaste) {
-        pushHit(`hit-${r.id}-self`, r.title, r.preview, parentPaste);
+      } else {
+        walkLeavesForSearch(r.children!, r.id);
       }
-    } else if (matchSelf && parentPaste) {
-      pushHit(`hit-${r.id}-leaf`, r.title, r.preview, parentPaste);
+    } else {
+      const t = r.title.toLowerCase().includes(q);
+      const prev = r.preview.toLowerCase().includes(q);
+      const body = parentPaste.toLowerCase().includes(q);
+      const paste = r.pasteText ?? "";
+      if (t) {
+        pushTier(titleTier, `hit-${r.id}-leaf`, r.title, r.preview, paste);
+      } else if (prev || body) {
+        pushTier(bodyTier, `hit-${r.id}-leaf`, r.title, r.preview, paste);
+      }
     }
+  }
+
+  const titleKeys = new Set(titleTier.map((h) => h.key));
+  const bodyFiltered = bodyTier.filter((h) => !titleKeys.has(h.key));
+
+  for (const h of titleTier) {
+    pushHit(h.key, h.title, h.preview, h.pasteText);
+  }
+  for (const h of bodyFiltered) {
+    pushHit(h.key, h.title, h.preview, h.pasteText);
   }
 
   return out;
 }
 
-function searchHitsOnly(entries: SearchEntry[]) {
-  return entries.filter((e): e is Extract<SearchEntry, { kind: "hit" }> => e.kind === "hit");
-}
-
-function browseRows(templates: TemplateRow[], drill: TemplateRow | null): VisibleRow[] {
-  if (!drill) {
-    return templates.map((row) => ({ kind: "top", row }));
+function browseRows(templates: TemplateRow[], stack: DrillFrame[]): VisibleRow[] {
+  if (stack.length === 0) {
+    return templates.map((row) => ({ kind: "top" as const, row }));
   }
-  return (drill.children ?? []).map((child) => ({
-    kind: "nested",
-    parent: drill,
-    child,
-  }));
+  const frame = stack[stack.length - 1]!;
+  const pathKey = stack.map((f) => f.title).join("::");
+  return frame.items.map((child) => ({ kind: "nested" as const, child, pathKey }));
 }
 
 function visibleRowId(v: VisibleRow): string {
   if (v.kind === "top") return `t-${v.row.id}`;
-  return `n-${v.parent.id}-${v.child.id}`;
+  const safe = v.pathKey.replace(/\s+/g, "_");
+  return `n-${safe}-${v.child.id}`;
 }
 
 function visiblePasteText(v: VisibleRow): string {
   if (v.kind === "top") return getPasteText(v.row);
-  return v.child.pasteText ?? "";
+  return getPasteText(v.child);
 }
 
 function visibleTitle(v: VisibleRow): string {
@@ -151,7 +241,35 @@ function visiblePreview(v: VisibleRow): string {
 }
 
 function visibleHasChildren(v: VisibleRow): boolean {
-  return v.kind === "top" && !!(v.row.children && v.row.children.length > 0);
+  if (v.kind === "top") {
+    return (
+      !v.row.isSeparator && !!(v.row.children && v.row.children.length > 0)
+    );
+  }
+  return (
+    !v.child.isSeparator &&
+    !!(v.child.children && v.child.children.length > 0)
+  );
+}
+
+function nextNonSeparatorBrowseIndex(
+  list: VisibleRow[],
+  from: number,
+  delta: 1 | -1,
+): number {
+  const len = list.length;
+  if (len === 0) return 0;
+  let i = from;
+  for (let s = 0; s < len; s++) {
+    i = (i + delta + len) % len;
+    if (!visibleIsSeparator(list[i]!)) return i;
+  }
+  return from;
+}
+
+function browseRowDepthClass(v: VisibleRow, drillDepth: number): string {
+  if (v.kind === "top") return "palette__item--depth-0";
+  return drillDepth > 1 ? "palette__item--depth-2" : "palette__item--depth-1";
 }
 
 function App() {
@@ -162,19 +280,18 @@ function App() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [varMap, setVarMap] = useState<Record<string, string>>({});
-  const [drill, setDrill] = useState<TemplateRow | null>(null);
+  const [drillStack, setDrillStack] = useState<DrillFrame[]>([]);
 
   const uniqueTemplates = useMemo(() => dedupeTemplatesById(templates), [templates]);
   const searching = query.trim().length > 0;
-  const searchEntries = useMemo(
-    () => buildSearchEntries(uniqueTemplates, query),
+  const searchHits = useMemo(
+    () => buildSearchHits(uniqueTemplates, query),
     [uniqueTemplates, query],
   );
-  const searchHits = useMemo(() => searchHitsOnly(searchEntries), [searchEntries]);
 
   const filteredBrowse = useMemo(
-    () => browseRows(uniqueTemplates, searching ? null : drill),
-    [uniqueTemplates, drill, searching],
+    () => browseRows(uniqueTemplates, searching ? [] : drillStack),
+    [uniqueTemplates, drillStack, searching],
   );
 
   const activeList: "search" | "browse" = searching ? "search" : "browse";
@@ -195,8 +312,8 @@ function App() {
         m[k] = typeof v === "string" ? v : String(v);
       }
       setVarMap(m);
-    } catch {
-      /* offline / dev */
+    } catch (e) {
+      console.error("[Snipcast] не удалось загрузить шаблоны:", e);
     }
   }, []);
 
@@ -235,7 +352,17 @@ function App() {
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query, drill, searching, navLength]);
+  }, [query, drillStack, searching, navLength]);
+
+  useEffect(() => {
+    if (searching || activeList !== "browse" || filteredBrowse.length === 0) return;
+    setSelectedIndex((i) => {
+      const v = filteredBrowse[i];
+      if (v && !visibleIsSeparator(v)) return i;
+      const j = filteredBrowse.findIndex((x) => !visibleIsSeparator(x));
+      return j >= 0 ? j : 0;
+    });
+  }, [searching, activeList, filteredBrowse]);
 
   useEffect(() => {
     if (navLength === 0) return;
@@ -245,26 +372,33 @@ function App() {
   useEffect(() => {
     const el = itemRefs.current[selectedIndex];
     el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [selectedIndex, activeList, searchEntries, filteredBrowse]);
+  }, [selectedIndex, activeList, searchHits, filteredBrowse]);
 
   useEffect(() => {
     let unlistenFocus: (() => void) | undefined;
-    void getCurrentWindow()
-      .onFocusChanged(({ payload: focused }) => {
-        if (focused) {
-          setQuery("");
-          setDrill(null);
-          setSelectedIndex(0);
-          void reloadData();
-          queueMicrotask(() => {
-            searchRef.current?.focus();
-            searchRef.current?.select();
-          });
-        }
-      })
-      .then((fn) => {
-        unlistenFocus = fn;
-      });
+    try {
+      void getCurrentWindow()
+        .onFocusChanged(({ payload: focused }) => {
+          if (focused) {
+            setQuery("");
+            setDrillStack([]);
+            setSelectedIndex(0);
+            void reloadData();
+            queueMicrotask(() => {
+              searchRef.current?.focus();
+              searchRef.current?.select();
+            });
+          }
+        })
+        .then((fn) => {
+          unlistenFocus = fn;
+        })
+        .catch(() => {
+          /* нет window API — палитра всё равно работает без авто-обновления по фокусу */
+        });
+    } catch {
+      /* getCurrentWindow() недоступен до инжекта Tauri */
+    }
 
     return () => {
       unlistenFocus?.();
@@ -275,8 +409,8 @@ function App() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        if (drill && !searching) {
-          setDrill(null);
+        if (drillStack.length > 0 && !searching) {
+          setDrillStack((s) => s.slice(0, -1));
           setSelectedIndex(0);
           return;
         }
@@ -297,9 +431,9 @@ function App() {
       if (e.key === "Backspace" && inSearch) {
         const len = searchRef.current?.value.length ?? 0;
         if (len > 0) return;
-        if (drill) {
+        if (drillStack.length > 0) {
           e.preventDefault();
-          setDrill(null);
+          setDrillStack([]);
           setSelectedIndex(0);
           return;
         }
@@ -307,26 +441,34 @@ function App() {
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedIndex((i) => (i + 1) % navLength);
+        if (activeList === "browse" && filteredBrowse.length > 0) {
+          setSelectedIndex((i) => nextNonSeparatorBrowseIndex(filteredBrowse, i, 1));
+        } else {
+          setSelectedIndex((i) => (i + 1) % navLength);
+        }
         return;
       }
 
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedIndex((i) => (i - 1 + navLength) % navLength);
+        if (activeList === "browse" && filteredBrowse.length > 0) {
+          setSelectedIndex((i) => nextNonSeparatorBrowseIndex(filteredBrowse, i, -1));
+        } else {
+          setSelectedIndex((i) => (i - 1 + navLength) % navLength);
+        }
         return;
       }
 
-      if (e.key === "ArrowLeft" && !searching && drill) {
+      if (e.key === "ArrowLeft" && !searching && drillStack.length > 0) {
         e.preventDefault();
-        setDrill(null);
+        setDrillStack((s) => s.slice(0, -1));
         setSelectedIndex(0);
         return;
       }
 
-      if (e.key === "Backspace" && !searching && drill && !inSearch) {
+      if (e.key === "Backspace" && !searching && drillStack.length > 0 && !inSearch) {
         e.preventDefault();
-        setDrill(null);
+        setDrillStack((s) => s.slice(0, -1));
         setSelectedIndex(0);
         return;
       }
@@ -341,8 +483,19 @@ function App() {
         }
         const v = filteredBrowse[idx] as VisibleRow | undefined;
         if (!v) return;
+        if (visibleIsSeparator(v)) return;
         if (visibleHasChildren(v)) {
-          setDrill((v as { kind: "top"; row: TemplateRow }).row);
+          if (v.kind === "top") {
+            const row = v.row;
+            if (row.children?.length) {
+              setDrillStack([{ title: row.title, items: row.children }]);
+            }
+          } else {
+            const ch = v.child;
+            if (ch.children?.length) {
+              setDrillStack((s) => [...s, { title: ch.title, items: ch.children! }]);
+            }
+          }
           setSelectedIndex(0);
           return;
         }
@@ -362,7 +515,7 @@ function App() {
     searchHits,
     filteredBrowse,
     searching,
-    drill,
+    drillStack,
   ]);
 
   const activeHit = searching ? searchHits[selectedIndex] : undefined;
@@ -375,22 +528,20 @@ function App() {
 
   const settingsKbd = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘K" : "Ctrl+K";
 
-  let hitNavIndex = 0;
-
   return (
     <div className="palette">
       <header className="palette__chrome" data-tauri-drag-region>
-        {drill && !searching ? (
+        {drillStack.length > 0 && !searching ? (
           <div className="palette__breadcrumb">
             <button
               type="button"
               className="palette__back"
               onClick={() => {
-                setDrill(null);
+                setDrillStack((s) => s.slice(0, -1));
                 setSelectedIndex(0);
               }}
             >
-              ← {drill.title}
+              ← {drillStack.map((f) => f.title).join(" › ")}
             </button>
           </div>
         ) : null}
@@ -402,7 +553,7 @@ function App() {
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
-            setDrill(null);
+            setDrillStack([]);
           }}
           autoComplete="off"
           spellCheck={false}
@@ -421,20 +572,12 @@ function App() {
           searchHitLength === 0 ? (
             <li className="palette__empty">Нет совпадений</li>
           ) : (
-            searchEntries.map((entry) => {
-              if (entry.kind === "section") {
-                return (
-                  <li key={entry.key} className="palette__section" role="presentation">
-                    <span className="palette__section-title">{entry.title}</span>
-                  </li>
-                );
-              }
-              const myIndex = hitNavIndex++;
+            searchHits.map((hit, myIndex) => {
               const isSel = myIndex === selectedIndex;
               return (
                 <li
-                  key={entry.key}
-                  id={`snipcast-hit-${entry.key}`}
+                  key={hit.key}
+                  id={`snipcast-hit-${hit.key}`}
                   ref={(el) => {
                     itemRefs.current[myIndex] = el;
                   }}
@@ -442,10 +585,14 @@ function App() {
                   role="option"
                   aria-selected={isSel}
                   onMouseEnter={() => setSelectedIndex(myIndex)}
-                  onClick={() => void insertTemplate(entry.pasteText)}
+                  onClick={() => void insertTemplate(hit.pasteText)}
                 >
-                  <span className="palette__subhit-title">{entry.title}</span>
-                  <span className="palette__subhit-preview">{entry.preview}</span>
+                  <span className="palette__subhit-title">
+                    {highlightText(hit.title, query)}
+                  </span>
+                  <span className="palette__subhit-preview">
+                    {highlightText(hit.preview, query)}
+                  </span>
                 </li>
               );
             })
@@ -455,6 +602,20 @@ function App() {
         ) : (
           filteredBrowse.map((v, index) => {
             const id = visibleRowId(v);
+            if (visibleIsSeparator(v)) {
+              return (
+                <li
+                  key={id}
+                  id={`snipcast-opt-${id}`}
+                  ref={(el) => {
+                    itemRefs.current[index] = el;
+                  }}
+                  className="palette__sep"
+                  role="separator"
+                  aria-hidden
+                />
+              );
+            }
             const pt = visiblePasteText(v);
             const hasBranch = visibleHasChildren(v);
             const inactive = !pt.trim() && !hasBranch;
@@ -465,17 +626,27 @@ function App() {
                 ref={(el) => {
                   itemRefs.current[index] = el;
                 }}
-                className={`palette__item palette__item--depth-0${
+                className={`palette__item ${browseRowDepthClass(v, drillStack.length)}${
                   hasBranch ? " palette__item--branch" : ""
-                }${index === selectedIndex ? " palette__item--selected" : ""}${
-                  inactive ? " palette__item--inactive" : ""
-                }`}
+                }${
+                  index === selectedIndex ? " palette__item--selected" : ""
+                }${inactive ? " palette__item--inactive" : ""}`}
                 role="option"
                 aria-selected={index === selectedIndex}
                 onMouseEnter={() => setSelectedIndex(index)}
                 onClick={() => {
                   if (hasBranch) {
-                    setDrill((v as { kind: "top"; row: TemplateRow }).row);
+                    if (v.kind === "top") {
+                      const row = v.row;
+                      if (row.children?.length) {
+                        setDrillStack([{ title: row.title, items: row.children }]);
+                      }
+                    } else {
+                      const ch = v.child;
+                      if (ch.children?.length) {
+                        setDrillStack((s) => [...s, { title: ch.title, items: ch.children! }]);
+                      }
+                    }
                     setSelectedIndex(0);
                     return;
                   }
@@ -508,7 +679,7 @@ function App() {
           <kbd>Enter</kbd> вставить
         </span>
         <span>
-          <kbd>Esc</kbd> {drill && !searching ? "назад" : "закрыть"}
+          <kbd>Esc</kbd> {drillStack.length > 0 && !searching ? "назад" : "закрыть"}
         </span>
         <span className="palette__hints-muted">
           <kbd>{settingsKbd}</kbd> настройки

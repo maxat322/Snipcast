@@ -3,6 +3,9 @@ export type TemplateChild = {
   title: string;
   preview: string;
   pasteText: string;
+  isSeparator?: boolean;
+  /** Вложенные папки (подпункты) */
+  children?: TemplateChild[];
 };
 
 export type TemplateRow = {
@@ -11,6 +14,7 @@ export type TemplateRow = {
   preview: string;
   pasteText?: string;
   children?: TemplateChild[];
+  isSeparator?: boolean;
 };
 
 export type AppConfig = {
@@ -25,9 +29,30 @@ export type PathsDto = {
   userDir: string;
   configPath: string;
   variablesPath: string;
+  userStructurePath: string;
 };
 
-export type UserTemplateFile = {
-  name: string;
+/** Элементы `user/structure.json` (порядок в палитре). */
+export type UserStructureItem =
+  | { type: "template"; file: string }
+  | { type: "folder"; id: string; title: string; items: UserStructureItem[] }
+  | { type: "separator"; id: string };
+
+export type UserStructureRoot = {
+  version: number;
+  items: UserStructureItem[];
+};
+
+export type UserTxtReadDto = {
+  file: string;
+  title: string;
   content: string;
+};
+
+export type UserTxtWriteResultDto = {
+  file: string;
+};
+
+export type UserTemplateCreateResultDto = {
+  file: string;
 };

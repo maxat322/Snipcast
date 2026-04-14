@@ -233,20 +233,42 @@ fn snipcast_list_templates(state: State<'_, Mutex<data::AppConfig>>) -> Result<V
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn snipcast_list_user_templates() -> Result<Vec<data::UserTemplateFile>, String> {
-    data::list_user_template_files()
+fn snipcast_get_user_structure() -> Result<data::UserStructureRoot, String> {
+    data::load_user_structure()
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn snipcast_write_user_template(name: String, content: String) -> Result<(), String> {
-    data::write_user_template_file(&name, &content)
+fn snipcast_save_user_structure(root: data::UserStructureRoot) -> Result<(), String> {
+    data::save_user_structure(&root)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn snipcast_delete_user_template(name: String) -> Result<(), String> {
-    data::delete_user_template_file(&name)
+fn snipcast_read_user_template_txt(file: String) -> Result<data::UserTxtReadDto, String> {
+    data::read_user_template_txt(&file)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn snipcast_write_user_template_txt(
+    old_file: Option<String>,
+    title: String,
+    content: String,
+) -> Result<data::UserTxtWriteResultDto, String> {
+    data::write_user_template_txt(old_file.as_deref(), &title, &content)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn snipcast_create_user_template_file() -> Result<data::UserTemplateCreateResultDto, String> {
+    data::create_user_template_file()
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn snipcast_delete_user_template_txt(file: String) -> Result<(), String> {
+    data::delete_user_template_txt(&file)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -372,9 +394,12 @@ pub fn run() {
             snipcast_get_variables,
             snipcast_save_variables,
             snipcast_list_templates,
-            snipcast_list_user_templates,
-            snipcast_write_user_template,
-            snipcast_delete_user_template,
+            snipcast_get_user_structure,
+            snipcast_save_user_structure,
+            snipcast_read_user_template_txt,
+            snipcast_write_user_template_txt,
+            snipcast_create_user_template_file,
+            snipcast_delete_user_template_txt,
             snipcast_open_settings,
             snipcast_get_version,
         ]);

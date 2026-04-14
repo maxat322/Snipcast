@@ -129,10 +129,27 @@ body {
   background: #25252c;
 }
 
+.palette__sep {
+  list-style: none;
+  height: 1px;
+  margin: 8px 12px;
+  padding: 0;
+  background: #3a3a44;
+  border: none;
+  border-radius: 0;
+  pointer-events: none;
+}
+
 .palette__item--depth-1 {
   padding-left: 22px;
   border-left: 2px solid #3a3a44;
   margin-left: 6px;
+}
+
+.palette__item--depth-2 {
+  padding-left: 34px;
+  border-left: 2px solid #3a3a44;
+  margin-left: 10px;
 }
 
 .palette__breadcrumb {
@@ -202,21 +219,11 @@ body {
   padding: 0 2px;
 }
 
-.palette__section {
-  list-style: none;
-  margin: 0;
-  padding: 10px 10px 4px;
-  pointer-events: none;
-  user-select: none;
-}
-
-.palette__section-title {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #6b6b78;
+.palette__hit-mark {
+  background: rgba(255, 210, 90, 0.28);
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
 }
 
 .palette__subhit {

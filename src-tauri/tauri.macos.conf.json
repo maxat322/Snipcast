@@ -23,6 +23,7 @@
       },
       {
         "label": "settings",
+        "url": "index.html?snipcast=settings",
         "title": "Настройки — Snipcast",
         "width": 880,
         "height": 640,
