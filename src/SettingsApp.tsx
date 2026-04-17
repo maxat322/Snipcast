@@ -1,30 +1,32 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { keyboardEventToTauriHotkey, tauriHotkeyToDisplay } from "./hotkeyFormat";
-import type {
-  AppConfig,
-  PathsDto,
-  UserStructureItem,
-  UserStructureRoot,
-  UserTxtReadDto,
-  UserTxtWriteResultDto,
-} from "./types";
+import type { AppConfig, TemplateGroup, TemplateNode, TemplateStore } from "./types";
+import {
+  applyPaletteListDensity,
+  applyUiThemeSetting,
+  normalizePaletteListDensity,
+  normalizeUiTheme,
+} from "./uiTheme";
+import "./theme-overrides.css";
 import "./Settings.css";
 
 const REPO_URL = "https://github.com/maxat32/Snipcast";
+const GROUP_COLORS = ["#5164f2", "#e8590c", "#20c997", "#be4bdb", "#339af0", "#fa5252"];
 
-type Section = "general" | "master" | "user" | "variables" | "update";
+type Section = "general" | "templates" | "variables" | "update";
+type GroupModalMode = "create" | "master" | null;
 
-function cloneStructure(root: UserStructureRoot): UserStructureRoot {
-  return JSON.parse(JSON.stringify(root)) as UserStructureRoot;
+function cloneStore(root: TemplateStore): TemplateStore {
+  return JSON.parse(JSON.stringify(root)) as TemplateStore;
 }
 
-function getNodeAtPath(root: UserStructureRoot, path: number[]): UserStructureItem | null {
+function getNodeAtPath(items: TemplateNode[], path: number[]): TemplateNode | null {
   if (path.length === 0) return null;
-  let list = root.items;
+  let list = items;
   for (let d = 0; d < path.length; d++) {
     const idx = path[d]!;
     const node = list[idx];
@@ -36,63 +38,46 @@ function getNodeAtPath(root: UserStructureRoot, path: number[]): UserStructureIt
   return null;
 }
 
-function insertAfterSelection(
-  root: UserStructureRoot,
-  selectedPath: number[] | null,
-  item: UserStructureItem,
-): UserStructureRoot {
-  const next = cloneStructure(root);
+function insertAfterSelection(items: TemplateNode[], selectedPath: number[] | null, item: TemplateNode) {
   if (!selectedPath || selectedPath.length === 0) {
-    next.items.push(item);
-    return next;
+    items.push(item);
+    return;
   }
   const insertAt = selectedPath[selectedPath.length - 1]! + 1;
   const parentPath = selectedPath.slice(0, -1);
-  let list = next.items;
+  let list = items;
   for (const idx of parentPath) {
     const node = list[idx];
     if (!node || node.type !== "folder") {
-      next.items.push(item);
-      return next;
+      items.push(item);
+      return;
     }
     list = node.items;
   }
   list.splice(insertAt, 0, item);
-  return next;
 }
 
-function moveSelected(
-  root: UserStructureRoot,
-  path: number[] | null,
-  delta: -1 | 1,
-): UserStructureRoot | null {
-  if (!path || path.length === 0) return null;
-  const next = cloneStructure(root);
+function moveSelected(items: TemplateNode[], path: number[] | null, delta: -1 | 1): boolean {
+  if (!path || path.length === 0) return false;
   const idx = path[path.length - 1]!;
-  let list = next.items;
+  let list = items;
   for (let d = 0; d < path.length - 1; d++) {
     const node = list[path[d]!];
-    if (!node || node.type !== "folder") return null;
+    if (!node || node.type !== "folder") return false;
     list = node.items;
   }
   const j = idx + delta;
-  if (j < 0 || j >= list.length) return null;
+  if (j < 0 || j >= list.length) return false;
   const a = list[idx]!;
-  const b = list[j]!;
-  list[idx] = b;
+  list[idx] = list[j]!;
   list[j] = a;
-  return next;
+  return true;
 }
 
-/** Если ниже выбранного элемента идёт папка — переносим элемент внутрь неё (в начало списка). */
-function moveIntoFolderBelow(
-  root: UserStructureRoot,
-  path: number[],
-): { root: UserStructureRoot; newPath: number[] } | null {
+function moveIntoFolderBelow(items: TemplateNode[], path: number[]): number[] | null {
   if (path.length === 0) return null;
-  const next = cloneStructure(root);
   const idx = path[path.length - 1]!;
-  let list = next.items;
+  let list = items;
   for (let d = 0; d < path.length - 1; d++) {
     const node = list[path[d]!];
     if (!node || node.type !== "folder") return null;
@@ -105,49 +90,20 @@ function moveIntoFolderBelow(
   const folderNode = list[idx];
   if (!folderNode || folderNode.type !== "folder") return null;
   folderNode.items.unshift(moved);
-  const newPath = [...path.slice(0, -1), idx, 0];
-  return { root: next, newPath };
+  return [...path.slice(0, -1), idx, 0];
 }
 
-function collectTxtFromSubtree(item: UserStructureItem): string[] {
-  const out: string[] = [];
-  const walk = (it: UserStructureItem) => {
-    if (it.type === "template") out.push(it.file);
-    else if (it.type === "folder") it.items.forEach(walk);
-  };
-  walk(item);
-  return out;
-}
-
-function removeAtPath(
-  root: UserStructureRoot,
-  path: number[],
-): { root: UserStructureRoot; txtToDelete: string[] } {
-  const next = cloneStructure(root);
+function removeSelected(items: TemplateNode[], path: number[]): boolean {
   const idx = path[path.length - 1]!;
-  let list = next.items;
+  let list = items;
   for (let d = 0; d < path.length - 1; d++) {
     const node = list[path[d]!];
-    if (!node || node.type !== "folder") {
-      return { root: next, txtToDelete: [] };
-    }
+    if (!node || node.type !== "folder") return false;
     list = node.items;
   }
-  const removed = list[idx];
-  if (!removed) return { root: next, txtToDelete: [] };
-  const txtToDelete = collectTxtFromSubtree(removed);
+  if (!list[idx]) return false;
   list.splice(idx, 1);
-  return { root: next, txtToDelete };
-}
-
-function replaceTemplateFileInRoot(root: UserStructureRoot, oldFile: string, newFile: string) {
-  const walk = (items: UserStructureItem[]) => {
-    for (const it of items) {
-      if (it.type === "template" && it.file === oldFile) it.file = newFile;
-      else if (it.type === "folder") walk(it.items);
-    }
-  };
-  walk(root.items);
+  return true;
 }
 
 function pathsEqual(a: number[] | null, b: number[]): boolean {
@@ -155,10 +111,7 @@ function pathsEqual(a: number[] | null, b: number[]): boolean {
   return a.every((v, i) => v === b[i]);
 }
 
-async function saveConfig(
-  next: AppConfig,
-  opts?: { skipPaletteHotkeyApply?: boolean },
-): Promise<void> {
+async function saveConfig(next: AppConfig, opts?: { skipPaletteHotkeyApply?: boolean }): Promise<void> {
   await invoke("snipcast_save_config", {
     incoming: next,
     skip_palette_hotkey_apply: opts?.skipPaletteHotkeyApply ?? false,
@@ -167,57 +120,67 @@ async function saveConfig(
 
 export function SettingsApp() {
   const [section, setSection] = useState<Section>("general");
-  const [paths, setPaths] = useState<PathsDto | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const configRef = useRef<AppConfig | null>(null);
   configRef.current = config;
 
   const [autostartOn, setAutostartOn] = useState(true);
   const [hotkeyDisplay, setHotkeyDisplay] = useState("");
-  const [masterPathInput, setMasterPathInput] = useState("");
   const [errorToast, setErrorToast] = useState("");
-
   const [version, setVersion] = useState("");
-  const [userStructure, setUserStructure] = useState<UserStructureRoot | null>(null);
+  const [varRows, setVarRows] = useState<{ key: string; value: string }[]>([]);
+
+  const [store, setStore] = useState<TemplateStore | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<number[] | null>(null);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [editorTitle, setEditorTitle] = useState("");
   const [editorContent, setEditorContent] = useState("");
-  const [editingFile, setEditingFile] = useState<string | null>(null);
-  const editorSnapshotRef = useRef<{ file: string; title: string; content: string } | null>(null);
-  const [varRows, setVarRows] = useState<{ key: string; value: string }[]>([]);
+  const [groupModalMode, setGroupModalMode] = useState<GroupModalMode>(null);
+  const [groupModalName, setGroupModalName] = useState("");
+  const [groupModalPath, setGroupModalPath] = useState("");
+  const colorInputRef = useRef<HTMLInputElement>(null);
 
   const showError = useCallback((e: unknown) => {
     setErrorToast(String(e));
     setTimeout(() => setErrorToast(""), 5000);
   }, []);
 
-  const pickMasterFolder = useCallback(async () => {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: "Папка мастер-шаблонов",
-      });
-      if (selected === null) return;
-      const path = Array.isArray(selected) ? selected[0] : selected;
-      if (typeof path === "string") setMasterPathInput(path);
-    } catch (e) {
-      showError(e);
-    }
-  }, [showError]);
+  const patchAppConfig = useCallback(
+    async (patch: Partial<Pick<AppConfig, "theme" | "paletteListDensity">>) => {
+      if (!config) return;
+      const next: AppConfig = { ...config, ...patch };
+      setConfig(next);
+      if ("theme" in patch) applyUiThemeSetting(normalizeUiTheme(next.theme));
+      if ("paletteListDensity" in patch) {
+        applyPaletteListDensity(normalizePaletteListDensity(next.paletteListDensity));
+      }
+      try {
+        await saveConfig(next, { skipPaletteHotkeyApply: true });
+      } catch (e) {
+        showError(e);
+      }
+    },
+    [config, showError],
+  );
+
+  const persistStore = useCallback(async (next: TemplateStore) => {
+    await invoke("snipcast_save_template_store", { store: next });
+    setStore(next);
+  }, []);
 
   const loadAll = useCallback(async () => {
     try {
-      const [p, c, v, vars] = await Promise.all([
-        invoke<PathsDto>("snipcast_get_paths"),
+      const [c, v, vars, tmpl] = await Promise.all([
         invoke<AppConfig>("snipcast_get_config"),
         invoke<string>("snipcast_get_version"),
         invoke<Record<string, unknown>>("snipcast_get_variables"),
+        invoke<TemplateStore>("snipcast_get_template_store"),
       ]);
-      setPaths(p);
       setConfig(c);
+      applyUiThemeSetting(normalizeUiTheme(c.theme));
+      applyPaletteListDensity(normalizePaletteListDensity(c.paletteListDensity));
       setHotkeyDisplay(tauriHotkeyToDisplay(c.paletteHotkey));
-      setMasterPathInput(c.masterTemplatesPath ?? "");
       setVersion(v);
       const enabled = await isEnabled().catch(() => false);
       setAutostartOn(enabled);
@@ -226,15 +189,8 @@ export function SettingsApp() {
         value: typeof val === "string" ? val : JSON.stringify(val),
       }));
       setVarRows(rows.length ? rows : [{ key: "", value: "" }]);
-    } catch (e) {
-      showError(e);
-    }
-  }, [showError]);
-
-  const loadUserStructure = useCallback(async () => {
-    try {
-      const s = await invoke<UserStructureRoot>("snipcast_get_user_structure");
-      setUserStructure(s);
+      setStore(tmpl);
+      setSelectedGroupId((prev) => prev ?? tmpl.groups[0]?.id ?? null);
     } catch (e) {
       showError(e);
     }
@@ -245,43 +201,15 @@ export function SettingsApp() {
   }, [loadAll]);
 
   useEffect(() => {
-    if (section !== "user") return;
-    void loadUserStructure();
-  }, [section, loadUserStructure]);
-
-  const onAutostartToggle = async (on: boolean) => {
-    setAutostartOn(on);
-    try {
-      if (on) await enable();
-      else await disable();
-    } catch {
-      /* ignore */
-    }
-    const base = configRef.current;
-    if (!base) return;
-    const next = { ...base, autostart: on };
-    try {
-      await saveConfig(next);
-      setConfig(next);
-    } catch (e) {
-      showError(e);
-    }
-  };
-
-  useEffect(() => {
-    const base = configRef.current;
-    if (!base) return;
-    const t = window.setTimeout(() => {
-      const v = masterPathInput.trim() || null;
-      const cur = base.masterTemplatesPath ?? null;
-      if (v === cur) return;
-      const next = { ...base, masterTemplatesPath: v };
-      void saveConfig(next)
-        .then(() => setConfig(next))
-        .catch(showError);
-    }, 450);
-    return () => clearTimeout(t);
-  }, [masterPathInput, showError]);
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onScheme = () => {
+      if (config?.theme === "system") {
+        applyUiThemeSetting("system");
+      }
+    };
+    mq.addEventListener("change", onScheme);
+    return () => mq.removeEventListener("change", onScheme);
+  }, [config?.theme]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -296,284 +224,70 @@ export function SettingsApp() {
     return () => clearTimeout(t);
   }, [varRows, showError]);
 
-  const persistStructure = useCallback(
-    async (next: UserStructureRoot) => {
-      await invoke("snipcast_save_user_structure", { root: next });
-      setUserStructure(next);
-    },
-    [],
-  );
+  const selectedGroup = useMemo<TemplateGroup | null>(() => {
+    if (!store || !selectedGroupId) return null;
+    return store.groups.find((g) => g.id === selectedGroupId) ?? null;
+  }, [store, selectedGroupId]);
 
-  const applySelection = useCallback(
-    async (path: number[], root: UserStructureRoot) => {
-      setSelectedPath(path);
-      const node = getNodeAtPath(root, path);
-      if (node?.type === "template") {
-        try {
-          const dto = await invoke<UserTxtReadDto>("snipcast_read_user_template_txt", {
-            file: node.file,
-          });
-          setEditingFile(dto.file);
-          setEditorTitle(dto.title);
-          setEditorContent(dto.content);
-          editorSnapshotRef.current = {
-            file: dto.file,
-            title: dto.title,
-            content: dto.content,
-          };
-        } catch (e) {
-          showError(e);
-        }
-      } else {
-        setEditingFile(null);
-        setEditorTitle("");
-        setEditorContent("");
-        editorSnapshotRef.current = null;
-      }
-    },
-    [showError],
-  );
-
-  const selectPath = useCallback(
-    async (path: number[]) => {
-      if (!userStructure) return;
-      await applySelection(path, userStructure);
-    },
-    [userStructure, applySelection],
-  );
+  const selectedNode = useMemo(() => {
+    if (!selectedGroup || !selectedPath) return null;
+    return getNodeAtPath(selectedGroup.items, selectedPath);
+  }, [selectedGroup, selectedPath]);
 
   useEffect(() => {
-    if (!editingFile || section !== "user") return;
-    const oldFile = editingFile;
+    if (!selectedNode || selectedNode.type !== "template") {
+      setEditorTitle("");
+      setEditorContent("");
+      return;
+    }
+    setEditorTitle(selectedNode.title);
+    setEditorContent(selectedNode.content);
+  }, [selectedNode?.type, selectedNode && selectedNode.type === "template" ? selectedNode.id : ""]);
+
+  useEffect(() => {
+    if (!store || !selectedGroup || !selectedPath || selectedGroup.isMaster) return;
+    if (!selectedNode || selectedNode.type !== "template") return;
     const t = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const res = await invoke<UserTxtWriteResultDto>("snipcast_write_user_template_txt", {
-            oldFile,
-            title: editorTitle,
-            content: editorContent,
-          });
-          if (res.file !== oldFile) {
-            setUserStructure((prev) => {
-              if (!prev) return prev;
-              const c = cloneStructure(prev);
-              replaceTemplateFileInRoot(c, oldFile, res.file);
-              void invoke("snipcast_save_user_structure", { root: c }).catch(showError);
-              return c;
-            });
-            setEditingFile(res.file);
-          }
-          editorSnapshotRef.current = {
-            file: res.file,
-            title: editorTitle,
-            content: editorContent,
-          };
-        } catch (e) {
-          showError(e);
-        }
-      })();
-    }, 600);
+      const next = cloneStore(store);
+      const g = next.groups.find((x) => x.id === selectedGroup.id);
+      if (!g) return;
+      const node = getNodeAtPath(g.items, selectedPath);
+      if (!node || node.type !== "template") return;
+      node.title = editorTitle;
+      node.content = editorContent;
+      void persistStore(next).catch(showError);
+    }, 350);
     return () => clearTimeout(t);
-  }, [editorTitle, editorContent, editingFile, section, showError]);
+  }, [
+    editorTitle,
+    editorContent,
+    selectedPath,
+    selectedNode && selectedNode.type === "template" ? selectedNode.id : "",
+    selectedGroup?.id,
+    selectedGroup?.isMaster,
+    store,
+    persistStore,
+    showError,
+  ]);
 
-  const onAddTemplate = async () => {
-    if (!userStructure) return;
+  const onAutostartToggle = async (on: boolean) => {
+    setAutostartOn(on);
     try {
-      const { file } = await invoke<{ file: string }>("snipcast_create_user_template_file");
-      const next = insertAfterSelection(userStructure, selectedPath, { type: "template", file });
-      await persistStructure(next);
-      const path = (() => {
-        if (!selectedPath || selectedPath.length === 0) {
-          return [next.items.length - 1];
-        }
-        const p = [...selectedPath];
-        p[p.length - 1] = p[p.length - 1]! + 1;
-        return p;
-      })();
-      await applySelection(path, next);
+      if (on) await enable();
+      else await disable();
+    } catch {
+      // ignore plugin error
+    }
+    const base = configRef.current;
+    if (!base) return;
+    const next = { ...base, autostart: on };
+    try {
+      await saveConfig(next);
+      setConfig(next);
     } catch (e) {
       showError(e);
     }
   };
-
-  const onAddFolder = async () => {
-    if (!userStructure) return;
-    try {
-      const item: UserStructureItem = {
-        type: "folder",
-        id: crypto.randomUUID(),
-        title: "Новая папка",
-        items: [],
-      };
-      const next = insertAfterSelection(userStructure, selectedPath, item);
-      await persistStructure(next);
-      const path = (() => {
-        if (!selectedPath || selectedPath.length === 0) {
-          return [next.items.length - 1];
-        }
-        const p = [...selectedPath];
-        p[p.length - 1] = p[p.length - 1]! + 1;
-        return p;
-      })();
-      setSelectedPath(path);
-      setEditingFile(null);
-      setEditorTitle("");
-      setEditorContent("");
-      editorSnapshotRef.current = null;
-    } catch (e) {
-      showError(e);
-    }
-  };
-
-  const onAddSeparator = async () => {
-    if (!userStructure) return;
-    try {
-      const item: UserStructureItem = {
-        type: "separator",
-        id: crypto.randomUUID(),
-      };
-      const next = insertAfterSelection(userStructure, selectedPath, item);
-      await persistStructure(next);
-      const path = (() => {
-        if (!selectedPath || selectedPath.length === 0) {
-          return [next.items.length - 1];
-        }
-        const p = [...selectedPath];
-        p[p.length - 1] = p[p.length - 1]! + 1;
-        return p;
-      })();
-      setSelectedPath(path);
-      setEditingFile(null);
-      setEditorTitle("");
-      setEditorContent("");
-      editorSnapshotRef.current = null;
-    } catch (e) {
-      showError(e);
-    }
-  };
-
-  const onMove = async (delta: -1 | 1) => {
-    if (!userStructure || !selectedPath) return;
-    if (delta === 1) {
-      const into = moveIntoFolderBelow(userStructure, selectedPath);
-      if (into) {
-        try {
-          await persistStructure(into.root);
-          setSelectedPath(into.newPath);
-          const node = getNodeAtPath(into.root, into.newPath);
-          if (node?.type === "template") {
-            await applySelection(into.newPath, into.root);
-          } else {
-            setEditingFile(null);
-            setEditorTitle("");
-            setEditorContent("");
-            editorSnapshotRef.current = null;
-          }
-        } catch (e) {
-          showError(e);
-        }
-        return;
-      }
-    }
-    const moved = moveSelected(userStructure, selectedPath, delta);
-    if (!moved) return;
-    try {
-      await persistStructure(moved);
-      const idx = selectedPath[selectedPath.length - 1]! + delta;
-      const newPath = [...selectedPath.slice(0, -1), idx];
-      setSelectedPath(newPath);
-    } catch (e) {
-      showError(e);
-    }
-  };
-
-  const onCancelEdit = () => {
-    const snap = editorSnapshotRef.current;
-    if (!snap) return;
-    setEditorTitle(snap.title);
-    setEditorContent(snap.content);
-  };
-
-  const onDeleteSelected = async () => {
-    if (!userStructure || !selectedPath) return;
-    const { root, txtToDelete } = removeAtPath(userStructure, selectedPath);
-    try {
-      for (const f of txtToDelete) {
-        await invoke("snipcast_delete_user_template_txt", { file: f });
-      }
-      await persistStructure(root);
-      setSelectedPath(null);
-      setEditingFile(null);
-      setEditorTitle("");
-      setEditorContent("");
-      editorSnapshotRef.current = null;
-    } catch (e) {
-      showError(e);
-    }
-  };
-
-  const canMoveUp =
-    !!selectedPath &&
-    selectedPath.length > 0 &&
-    selectedPath[selectedPath.length - 1]! > 0;
-  const canMoveDown =
-    !!userStructure &&
-    !!selectedPath &&
-    selectedPath.length > 0 &&
-    (() => {
-      let list = userStructure.items;
-      for (let d = 0; d < selectedPath.length - 1; d++) {
-        const n = list[selectedPath[d]!];
-        if (!n || n.type !== "folder") return false;
-        list = n.items;
-      }
-      const idx = selectedPath[selectedPath.length - 1]!;
-      return idx < list.length - 1;
-    })();
-
-  const renderUserItems = (
-    items: UserStructureItem[],
-    basePath: number[],
-    depth: number,
-  ): ReactNode =>
-    items.map((item, i) => {
-      const path = [...basePath, i];
-      const key =
-        item.type === "template"
-          ? `t-${item.file}`
-          : item.type === "folder"
-            ? `f-${item.id}`
-            : `s-${item.id}`;
-      const active = pathsEqual(selectedPath, path);
-      const label =
-        item.type === "template"
-          ? item.file.replace(/\.txt$/i, "")
-          : item.type === "folder"
-            ? item.title
-            : "— разделитель —";
-      return (
-        <div key={key} className="settings__tree-node">
-          <button
-            type="button"
-            className={`settings__tree-row${active ? " is-active" : ""}`}
-            style={{ paddingLeft: 10 + depth * 18 }}
-            onClick={() => void selectPath(path)}
-          >
-            {item.type === "folder" ? (
-              <span className="settings__tree-icon" aria-hidden>
-                📁{" "}
-              </span>
-            ) : null}
-            {item.type === "separator" ? (
-              <span className="settings__tree-sep-label">{label}</span>
-            ) : (
-              label
-            )}
-          </button>
-          {item.type === "folder" ? renderUserItems(item.items, path, depth + 1) : null}
-        </div>
-      );
-    });
 
   const onHotkeyFocus = () => {
     void invoke("snipcast_palette_hotkey_pause").catch(() => {});
@@ -603,6 +317,310 @@ export function SettingsApp() {
     }
   };
 
+  const setSelectedGroup = (groupId: string) => {
+    setSelectedGroupId(groupId);
+    setSelectedPath(null);
+    setEditorTitle("");
+    setEditorContent("");
+  };
+
+  const openGroupModal = (mode: GroupModalMode) => {
+    setGroupModalMode(mode);
+    setGroupModalName("");
+    setGroupModalPath("");
+  };
+
+  const closeGroupModal = () => {
+    setGroupModalMode(null);
+    setGroupModalName("");
+    setGroupModalPath("");
+  };
+
+  const onConfirmGroupModal = async () => {
+    if (!store || !groupModalMode) return;
+    const next = cloneStore(store);
+    let newGroup: TemplateGroup;
+
+    if (groupModalMode === "master") {
+      const path = groupModalPath.trim();
+      if (!path) {
+        showError("Выберите JSON файл шаблона мастер-группы");
+        return;
+      }
+      try {
+        newGroup = await invoke<TemplateGroup>("snipcast_import_master_group", { path });
+        newGroup = {
+          ...newGroup,
+          isMaster: true,
+          masterSourcePath: path,
+        };
+        if (next.groups.some((g) => g.id === newGroup.id)) {
+          newGroup = { ...newGroup, id: `group-${crypto.randomUUID()}` };
+        }
+      } catch (e) {
+        showError(e);
+        return;
+      }
+    } else {
+      const requestedName = groupModalName.trim();
+      if (!requestedName) {
+        showError("Введите название группы");
+        return;
+      }
+      newGroup = {
+        id: `group-${crypto.randomUUID()}`,
+        title: requestedName,
+        color: GROUP_COLORS[next.groups.length % GROUP_COLORS.length]!,
+        isMaster: false,
+        masterSourcePath: undefined,
+        items: [],
+      };
+    }
+
+    next.groups.push(newGroup);
+    try {
+      await persistStore(next);
+      setSelectedGroup(newGroup.id);
+      closeGroupModal();
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const pickMasterGroupFile = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        title: "Выберите JSON файл мастер группы",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!selected) return;
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (typeof path === "string") {
+        setGroupModalPath(path);
+      }
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const importEditableTemplateFromFile = async () => {
+    if (!store) return;
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        title: "Импорт группы из JSON",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!selected) return;
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (typeof path !== "string") return;
+      const imported = await invoke<TemplateGroup>("snipcast_import_template_group", { path });
+      const next = cloneStore(store);
+      let newGroup: TemplateGroup = {
+        ...imported,
+        isMaster: false,
+        masterSourcePath: undefined,
+      };
+      if (next.groups.some((g) => g.id === newGroup.id)) {
+        newGroup = { ...newGroup, id: `group-${crypto.randomUUID()}` };
+      }
+      next.groups.push(newGroup);
+      try {
+        await persistStore(next);
+        setSelectedGroup(newGroup.id);
+        setSelectedPath(null);
+      } catch (e) {
+        showError(e);
+      }
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const onDeleteGroup = async () => {
+    if (!store || !selectedGroupId) return;
+    const next = cloneStore(store);
+    const idx = next.groups.findIndex((g) => g.id === selectedGroupId);
+    if (idx < 0) return;
+    next.groups.splice(idx, 1);
+    try {
+      await persistStore(next);
+      setSelectedGroup(next.groups[idx]?.id ?? next.groups[idx - 1]?.id ?? null);
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const updateSelectedGroup = async (patch: Partial<TemplateGroup>) => {
+    if (!store || !selectedGroupId) return;
+    const next = cloneStore(store);
+    const g = next.groups.find((x) => x.id === selectedGroupId);
+    if (!g) return;
+    Object.assign(g, patch);
+    try {
+      await persistStore(next);
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const onAddNode = async (type: "template" | "folder" | "separator") => {
+    if (!store || !selectedGroup || selectedGroup.isMaster) return;
+    const next = cloneStore(store);
+    const g = next.groups.find((x) => x.id === selectedGroup.id);
+    if (!g) return;
+    const node: TemplateNode =
+      type === "template"
+        ? { type: "template", id: crypto.randomUUID(), title: "Новый шаблон", content: "" }
+        : type === "folder"
+          ? { type: "folder", id: crypto.randomUUID(), title: "Новый подпункт", items: [] }
+          : { type: "separator", id: crypto.randomUUID() };
+    insertAfterSelection(g.items, selectedPath, node);
+    try {
+      await persistStore(next);
+      if (!selectedPath || selectedPath.length === 0) {
+        setSelectedPath([g.items.length - 1]);
+      } else {
+        const np = [...selectedPath];
+        np[np.length - 1] = np[np.length - 1]! + 1;
+        setSelectedPath(np);
+      }
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const onMove = async (delta: -1 | 1) => {
+    if (!store || !selectedGroup || !selectedPath || selectedGroup.isMaster) return;
+    const next = cloneStore(store);
+    const g = next.groups.find((x) => x.id === selectedGroup.id);
+    if (!g) return;
+    if (delta === 1) {
+      const intoPath = moveIntoFolderBelow(g.items, selectedPath);
+      if (intoPath) {
+        try {
+          await persistStore(next);
+          setSelectedPath(intoPath);
+          return;
+        } catch (e) {
+          showError(e);
+          return;
+        }
+      }
+    }
+    if (!moveSelected(g.items, selectedPath, delta)) return;
+    try {
+      await persistStore(next);
+      const np = [...selectedPath];
+      np[np.length - 1] = np[np.length - 1]! + delta;
+      setSelectedPath(np);
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const onDeleteNode = async () => {
+    if (!store || !selectedGroup || !selectedPath || selectedGroup.isMaster) return;
+    const next = cloneStore(store);
+    const g = next.groups.find((x) => x.id === selectedGroup.id);
+    if (!g) return;
+    if (!removeSelected(g.items, selectedPath)) return;
+    try {
+      await persistStore(next);
+      setSelectedPath(null);
+      setEditorTitle("");
+      setEditorContent("");
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const canMoveUp = !!selectedPath && selectedPath[selectedPath.length - 1]! > 0 && !selectedGroup?.isMaster;
+  const canMoveDown =
+    !!selectedGroup &&
+    !!selectedPath &&
+    !selectedGroup.isMaster &&
+    (() => {
+      let list = selectedGroup.items;
+      for (let d = 0; d < selectedPath.length - 1; d++) {
+        const n = list[selectedPath[d]!];
+        if (!n || n.type !== "folder") return false;
+        list = n.items;
+      }
+      const idx = selectedPath[selectedPath.length - 1]!;
+      return idx < list.length - 1;
+    })();
+
+  const renderTree = (items: TemplateNode[], basePath: number[], depth: number): ReactNode =>
+    items.map((item, i) => {
+      const path = [...basePath, i];
+      const pathKey = path.join(".");
+      const key =
+        item.type === "template"
+          ? `t-${item.id}`
+          : item.type === "folder"
+            ? `f-${item.id}`
+            : `s-${item.id}`;
+      const active = pathsEqual(selectedPath, path);
+      const label =
+        item.type === "template"
+          ? item.title
+          : item.type === "folder"
+            ? item.title
+            : "— разделитель —";
+      return (
+        <div key={key} className="settings__tree-node">
+          <button
+            type="button"
+            className={`settings__tree-row${active ? " is-active" : ""}`}
+            style={{ paddingLeft: 10 + depth * 18 }}
+            onClick={() => setSelectedPath(path)}
+          >
+            {item.type === "folder" ? (
+              <span
+                className="settings__tree-toggle"
+                role="button"
+                tabIndex={0}
+                aria-label={collapsedFolders.has(pathKey) ? "Развернуть подпункт" : "Свернуть подпункт"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCollapsedFolders((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(pathKey)) next.delete(pathKey);
+                    else next.add(pathKey);
+                    return next;
+                  });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setCollapsedFolders((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(pathKey)) next.delete(pathKey);
+                    else next.add(pathKey);
+                    return next;
+                  });
+                }}
+              >
+                {collapsedFolders.has(pathKey) ? "▸" : "▾"}
+              </span>
+            ) : null}
+            {item.type === "folder" ? (
+              <span className="settings__tree-icon" aria-hidden>
+                📂
+              </span>
+            ) : null}
+            {item.type === "separator" ? <span className="settings__tree-sep-label">{label}</span> : label}
+          </button>
+          {item.type === "folder" && !collapsedFolders.has(pathKey) ? renderTree(item.items, path, depth + 1) : null}
+        </div>
+      );
+    });
+
   return (
     <div className="settings">
       <aside className="settings__sidebar">
@@ -617,17 +635,10 @@ export function SettingsApp() {
           </button>
           <button
             type="button"
-            className={section === "master" ? "settings__nav-item is-active" : "settings__nav-item"}
-            onClick={() => setSection("master")}
+            className={section === "templates" ? "settings__nav-item is-active" : "settings__nav-item"}
+            onClick={() => setSection("templates")}
           >
-            Мастер шаблоны
-          </button>
-          <button
-            type="button"
-            className={section === "user" ? "settings__nav-item is-active" : "settings__nav-item"}
-            onClick={() => setSection("user")}
-          >
-            Свои шаблоны
+            Шаблоны
           </button>
           <button
             type="button"
@@ -647,21 +658,58 @@ export function SettingsApp() {
       </aside>
 
       <main className="settings__main">
-        <header className="settings__toolbar">
-          <h1 className="settings__title">
-            {section === "general" && "Основные"}
-            {section === "master" && "Мастер шаблоны"}
-            {section === "user" && "Свои шаблоны"}
-            {section === "variables" && "Переменные"}
-            {section === "update" && "Обновление"}
-          </h1>
-        </header>
-
         {errorToast ? <div className="settings__toast settings__toast--error">{errorToast}</div> : null}
 
         {section === "general" ? (
           <div className="settings__panel">
             <div className="settings__group">
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">Тема</span>
+                <div className="settings__segment-row" role="radiogroup" aria-label="Тема оформления">
+                  {(
+                    [
+                      { v: "light" as const, label: "Светлая" },
+                      { v: "dark" as const, label: "Тёмная" },
+                      { v: "system" as const, label: "Как в системе" },
+                    ] as const
+                  ).map(({ v, label }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      role="radio"
+                      aria-checked={normalizeUiTheme(config?.theme) === v}
+                      className={`settings__seg${normalizeUiTheme(config?.theme) === v ? " is-active" : ""}`}
+                      onClick={() => void patchAppConfig({ theme: v })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">Размер шрифта в списке шаблонов</span>
+                <div className="settings__segment-row" role="radiogroup" aria-label="Размер списка в палитре">
+                  {(
+                    [
+                      { v: "compact" as const, label: "Мелкий" },
+                      { v: "normal" as const, label: "Обычный" },
+                    ] as const
+                  ).map(({ v, label }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      role="radio"
+                      aria-checked={normalizePaletteListDensity(config?.paletteListDensity) === v}
+                      className={`settings__seg${
+                        normalizePaletteListDensity(config?.paletteListDensity) === v ? " is-active" : ""
+                      }`}
+                      onClick={() => void patchAppConfig({ paletteListDensity: v })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="settings__option">
                 <span className="settings__option-label">Автозапуск с системой</span>
                 <button
@@ -674,7 +722,7 @@ export function SettingsApp() {
                   <span className="settings__toggle-knob" />
                 </button>
               </div>
-              <div className="settings__option settings__option--stack">
+              <div className="settings__option settings__option--hotkey">
                 <span className="settings__option-label">Хоткей</span>
                 <input
                   type="text"
@@ -689,164 +737,147 @@ export function SettingsApp() {
                   aria-label="Запись хоткея палитры"
                 />
               </div>
-              <div className="settings__option settings__option--stack settings__option--disabled">
-                <span className="settings__option-label">Тема</span>
-                <input type="text" disabled placeholder="В разработке..." />
-              </div>
-              <div className="settings__option settings__option--stack settings__option--disabled">
-                <span className="settings__option-label">Язык</span>
-                <input type="text" disabled placeholder="В разработке..." />
-              </div>
             </div>
-            {paths ? (
-              <p className="settings__paths">
-                Папка данных: <code>{paths.baseDir}</code>
-              </p>
-            ) : null}
           </div>
         ) : null}
 
-        {section === "master" ? (
-          <div className="settings__panel">
-            <p className="settings__lead">Заготовленные шаблоны, редактируемые Администратором.</p>
-            <div className="settings__option settings__option--stack">
-              <span className="settings__option-label">Путь к папке мастер шаблонов</span>
-              <div className="settings__path-field">
-                <input
-                  type="text"
-                  value={masterPathInput}
-                  onChange={(e) => setMasterPathInput(e.target.value)}
-                  placeholder="Пусто..."
-                  spellCheck={false}
-                  aria-label="Путь к папке мастер-шаблонов"
-                />
-                <button
-                  type="button"
-                  className="settings__folder-btn"
-                  title="Выбрать папку"
-                  onClick={() => void pickMasterFolder()}
-                >
-                  Обзор…
-                </button>
-              </div>
-            </div>
-            {paths ? (
-              <p className="settings__paths">
-                Сейчас используется: <code>{paths.masterDir}</code>
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {section === "user" ? (
+        {section === "templates" ? (
           <div className="settings__panel settings__panel--user-templates">
-            <div className="settings__templates-toolbar">
-              <button type="button" className="settings__ghost" onClick={() => void onAddTemplate()}>
-                Добавить Шаблон
-              </button>
-              <button type="button" className="settings__ghost" onClick={() => void onAddFolder()}>
-                Добавить Подпункт
-              </button>
-              <button type="button" className="settings__ghost" onClick={() => void onAddSeparator()}>
-                Добавить разделитель
+            <div className="settings__templates-toolbar settings__templates-toolbar--groups">
+              <button type="button" className="settings__ghost" title="Создать новую группу" onClick={() => openGroupModal("create")}>
+                ⊕ Новая группа
               </button>
               <button
                 type="button"
                 className="settings__ghost"
-                disabled={!canMoveUp}
-                title="Выше"
-                onClick={() => void onMove(-1)}
+                title="Добавить новую группу из JSON (редактируемая копия)"
+                onClick={() => void importEditableTemplateFromFile()}
               >
+                ⏬ Импорт группы
+              </button>
+              <button type="button" className="settings__ghost" title="Импортировать мастер группу из файла" onClick={() => openGroupModal("master")}>
+                ⭐︎ Мастер группа
+              </button>
+              <div className="settings__group-tags">
+                {store?.groups.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    className={`settings__group-tag${selectedGroupId === g.id ? " is-active" : ""}`}
+                    style={{ "--tag-color": g.color } as React.CSSProperties}
+                    onClick={() => setSelectedGroup(g.id)}
+                  >
+                    {g.title}
+                    {g.isMaster ? " •M" : ""}
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="settings__ghost" title="Удалить выбранную группу" disabled={!selectedGroupId} onClick={() => void onDeleteGroup()}>
+                ❌
+              </button>
+              <button
+                type="button"
+                className="settings__ghost"
+                title="Сменить цвет выбранной группы"
+                disabled={!selectedGroupId}
+                onClick={() => colorInputRef.current?.click()}
+              >
+                🎨
+              </button>
+              <input
+                ref={colorInputRef}
+                type="color"
+                className="settings__hidden-color"
+                value={selectedGroup?.color ?? "#5164f2"}
+                onChange={(e) => void updateSelectedGroup({ color: e.target.value })}
+              />
+            </div>
+
+            <div className="settings__templates-toolbar">
+              <button type="button" className="settings__ghost" title="Добавить шаблон" disabled={selectedGroup?.isMaster} onClick={() => void onAddNode("template")}>
+                ➕
+              </button>
+              <button type="button" className="settings__ghost" title="Добавить подпункт" disabled={selectedGroup?.isMaster} onClick={() => void onAddNode("folder")}>
+                📂
+              </button>
+              <button type="button" className="settings__ghost" title="Добавить разделитель" disabled={selectedGroup?.isMaster} onClick={() => void onAddNode("separator")}>
+                ➖
+              </button>
+              <button type="button" className="settings__ghost" title="Переместить вверх" disabled={!canMoveUp} onClick={() => void onMove(-1)}>
                 ⬆️
               </button>
-              <button
-                type="button"
-                className="settings__ghost"
-                disabled={!canMoveDown}
-                title="Ниже"
-                onClick={() => void onMove(1)}
-              >
+              <button type="button" className="settings__ghost" title="Переместить вниз" disabled={!canMoveDown} onClick={() => void onMove(1)}>
                 ⬇️
               </button>
-              <button
-                type="button"
-                className="settings__ghost"
-                disabled={!editingFile}
-                onClick={onCancelEdit}
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                className="settings__danger settings__danger--compact"
-                disabled={!selectedPath}
-                onClick={() => void onDeleteSelected()}
-              >
-                Удалить
+              <button type="button" className="settings__ghost" title="Удалить выбранный элемент" disabled={!selectedPath || selectedGroup?.isMaster} onClick={() => void onDeleteNode()}>
+                ❌
               </button>
             </div>
+
             <div className="settings__templates-split">
-              <div className="settings__templates-list">
+              <div className="settings__templates-list settings__templates-list--full">
                 <div className="settings__templates-list-inner">
-                  {userStructure ? (
-                    userStructure.items.length === 0 ? (
+                  {selectedGroup ? (
+                    selectedGroup.items.length === 0 ? (
                       <p className="settings__templates-empty">Список пуст. Добавьте шаблон.</p>
                     ) : (
-                      renderUserItems(userStructure.items, [], 0)
+                      renderTree(selectedGroup.items, [], 0)
                     )
                   ) : (
-                    <p className="settings__templates-empty">Загрузка…</p>
+                    <p className="settings__templates-empty">Создайте группу шаблонов.</p>
                   )}
                 </div>
               </div>
               <div className="settings__templates-editor">
-                {editingFile ? (
+                {selectedNode?.type === "template" ? (
                   <>
-                    <label className="settings__field-label" htmlFor="user-tpl-title">
-                      Заголовок (имя файла)
+                    <label className="settings__field-label" htmlFor="tpl-title">
+                      Название шаблона
                     </label>
                     <input
-                      id="user-tpl-title"
+                      id="tpl-title"
                       type="text"
                       className="settings__templates-title-input"
                       value={editorTitle}
                       onChange={(e) => setEditorTitle(e.target.value)}
                       spellCheck={false}
                       autoComplete="off"
+                      disabled={!!selectedGroup?.isMaster}
                     />
-                    <label className="settings__field-label" htmlFor="user-tpl-body">
+                    <label className="settings__field-label" htmlFor="tpl-body">
                       Содержимое
                     </label>
                     <textarea
-                      id="user-tpl-body"
+                      id="tpl-body"
                       className="settings__templates-body"
                       value={editorContent}
                       onChange={(e) => setEditorContent(e.target.value)}
                       placeholder="Текст шаблона…"
                       spellCheck={false}
+                      disabled={!!selectedGroup?.isMaster}
                     />
-                    <p className="settings__templates-hint">
-                      В палитре описание берётся из первой строки содержимого.
-                    </p>
+                    <div className="settings__templates-hint">
+                      <p>
+                        <code>{"{...}"}</code> — вставляет переменную из настроек.
+                      </p>
+                      <p>
+                        <code>[...]</code> — вписывание своего текста, перед вставкой.
+                      </p>
+                    </div>
+                    {selectedGroup?.isMaster ? (
+                      <p className="settings__templates-placeholder">Мастер группа: редактирование отключено.</p>
+                    ) : null}
                   </>
                 ) : (
-                  <p className="settings__templates-placeholder">
-                    Выберите шаблон в списке слева, чтобы изменить заголовок и текст.
-                  </p>
+                  <p className="settings__templates-placeholder">Выберите шаблон в списке слева.</p>
                 )}
               </div>
             </div>
-            {paths ? (
-              <p className="settings__paths">
-                Шаблоны: <code>{paths.userDir}</code> · порядок: <code>{paths.userStructurePath}</code>
-              </p>
-            ) : null}
           </div>
         ) : null}
 
         {section === "variables" ? (
           <div className="settings__panel">
-            <p className="settings__lead">Значения подставляются в шаблоны вместо плейсхолдеров вида {"{user}"}.</p>
             <div className="settings__vars">
               {varRows.map((row, i) => (
                 <div key={i} className="settings__var-row">
@@ -892,7 +923,7 @@ export function SettingsApp() {
 
         {section === "update" ? (
           <div className="settings__panel settings__panel--about">
-            <img className="settings__logo" src="/vite.svg" alt="" width={96} height={96} />
+            <img className="settings__logo" src="/app-icon.png" alt="" width={96} height={96} />
             <h2 className="settings__appname">Snipcast</h2>
             <p className="settings__dev">dev by Maxat32, maxat322@gmail.com</p>
             <p className="settings__version">Версия {version || "…"}</p>
@@ -906,6 +937,62 @@ export function SettingsApp() {
             <button type="button" className="settings__linkish" onClick={() => void openUrl(REPO_URL)}>
               Репозиторий на GitHub
             </button>
+          </div>
+        ) : null}
+
+        {groupModalMode ? (
+          <div className="settings__modal-backdrop" role="presentation" onClick={closeGroupModal}>
+            <div
+              className="settings__modal"
+              role="dialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="settings__modal-title">
+                {groupModalMode === "master" ? "Новая мастер группа" : "Новая группа"}
+              </h3>
+              {groupModalMode === "create" ? (
+                <>
+                  <label className="settings__field-label" htmlFor="group-name-input">
+                    Название группы
+                  </label>
+                  <input
+                    id="group-name-input"
+                    type="text"
+                    value={groupModalName}
+                    onChange={(e) => setGroupModalName(e.target.value)}
+                    autoFocus
+                  />
+                </>
+              ) : (
+                <div className="settings__path-field">
+                  <input
+                    id="group-master-path-display"
+                    type="text"
+                    readOnly
+                    value={groupModalPath}
+                    placeholder="Нажмите «Обзор…» и выберите файл"
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    id="group-master-file-btn"
+                    className="settings__folder-btn"
+                    onClick={() => void pickMasterGroupFile()}
+                  >
+                    Обзор…
+                  </button>
+                </div>
+              )}
+              <div className="settings__modal-actions">
+                <button type="button" className="settings__ghost" onClick={closeGroupModal}>
+                  Отмена
+                </button>
+                <button type="button" className="settings__primary" onClick={() => void onConfirmGroupModal()}>
+                  {groupModalMode === "master" ? "Импорт" : "Создать"}
+                </button>
+              </div>
+            </div>
           </div>
         ) : null}
       </main>

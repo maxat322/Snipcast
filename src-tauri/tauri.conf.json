@@ -14,9 +14,9 @@
       {
         "label": "main",
         "title": "Snipcast",
-        "width": 560,
+        "width": 728,
         "height": 400,
-        "minWidth": 480,
+        "minWidth": 624,
         "minHeight": 320,
         "resizable": true,
         "visible": false,
@@ -55,7 +55,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "nsis"],
+    "targets": [
+      "dmg",
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

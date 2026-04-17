@@ -158,6 +158,17 @@ fn paste_template(
     }
 }
 
+/// Чтение текста из буфера обмена ОС (WebView `navigator.clipboard` в палитре часто недоступен).
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn snipcast_clipboard_read_text() -> Result<String, String> {
+    let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    match cb.get_text() {
+        Ok(s) => Ok(s),
+        Err(_) => Ok(String::new()),
+    }
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_get_paths(state: State<'_, Mutex<data::AppConfig>>) -> Result<data::PathsDto, String> {
@@ -233,42 +244,26 @@ fn snipcast_list_templates(state: State<'_, Mutex<data::AppConfig>>) -> Result<V
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn snipcast_get_user_structure() -> Result<data::UserStructureRoot, String> {
-    data::load_user_structure()
+fn snipcast_get_template_store() -> Result<data::TemplateStore, String> {
+    data::load_template_store()
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn snipcast_save_user_structure(root: data::UserStructureRoot) -> Result<(), String> {
-    data::save_user_structure(&root)
+fn snipcast_save_template_store(store: data::TemplateStore) -> Result<(), String> {
+    data::save_template_store(&store)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn snipcast_read_user_template_txt(file: String) -> Result<data::UserTxtReadDto, String> {
-    data::read_user_template_txt(&file)
+fn snipcast_import_master_group(path: String) -> Result<data::TemplateGroup, String> {
+    data::import_master_group_from_file(&path)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
-fn snipcast_write_user_template_txt(
-    old_file: Option<String>,
-    title: String,
-    content: String,
-) -> Result<data::UserTxtWriteResultDto, String> {
-    data::write_user_template_txt(old_file.as_deref(), &title, &content)
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[tauri::command]
-fn snipcast_create_user_template_file() -> Result<data::UserTemplateCreateResultDto, String> {
-    data::create_user_template_file()
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[tauri::command]
-fn snipcast_delete_user_template_txt(file: String) -> Result<(), String> {
-    data::delete_user_template_txt(&file)
+fn snipcast_import_template_group(path: String) -> Result<data::TemplateGroup, String> {
+    data::import_template_group_from_file(&path)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -386,6 +381,7 @@ pub fn run() {
         builder = builder.invoke_handler(tauri::generate_handler![
             palette_hide,
             paste_template,
+            snipcast_clipboard_read_text,
             snipcast_get_paths,
             snipcast_get_config,
             snipcast_save_config,
@@ -394,12 +390,10 @@ pub fn run() {
             snipcast_get_variables,
             snipcast_save_variables,
             snipcast_list_templates,
-            snipcast_get_user_structure,
-            snipcast_save_user_structure,
-            snipcast_read_user_template_txt,
-            snipcast_write_user_template_txt,
-            snipcast_create_user_template_file,
-            snipcast_delete_user_template_txt,
+            snipcast_get_template_store,
+            snipcast_save_template_store,
+            snipcast_import_master_group,
+            snipcast_import_template_group,
             snipcast_open_settings,
             snipcast_get_version,
         ]);

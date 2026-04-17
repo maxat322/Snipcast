@@ -4,11 +4,20 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { TemplateChild, TemplateRow } from "./types";
+import { applyBracketReplacements, extractOrderedBracketLabels } from "./bracketPlaceholders";
+import type { AppConfig, TemplateChild, TemplateRow } from "./types";
+import {
+  applyPaletteListDensity,
+  applyUiThemeSetting,
+  normalizePaletteListDensity,
+  normalizeUiTheme,
+} from "./uiTheme";
+import "./theme-overrides.css";
 import "./App.css";
 
 function IconFolderOutline({ className }: { className?: string }) {
@@ -32,16 +41,14 @@ function IconFolderOutline({ className }: { className?: string }) {
   );
 }
 
-/** Уникальные корневые шаблоны по id (первый экземпляр), чтобы не дублировать строки из master+user. */
+/**
+ * Уникальные корневые шаблоны по id. При совпадении id оставляем последний вариант
+ * (обычно «Свои» идут после мастера и должны перекрывать дубликат).
+ */
 function dedupeTemplatesById(rows: TemplateRow[]): TemplateRow[] {
-  const seen = new Set<string>();
-  const out: TemplateRow[] = [];
-  for (const r of rows) {
-    if (seen.has(r.id)) continue;
-    seen.add(r.id);
-    out.push(r);
-  }
-  return out;
+  const lastIndex = new Map<string, number>();
+  rows.forEach((r, i) => lastIndex.set(r.id, i));
+  return rows.filter((r, i) => lastIndex.get(r.id) === i);
 }
 
 type SearchHit = {
@@ -55,6 +62,18 @@ type SearchHit = {
 type DrillFrame = {
   title: string;
   items: TemplateChild[];
+};
+
+type GroupTab = {
+  id: string;
+  title: string;
+  color: string;
+};
+
+type BracketPromptState = {
+  baseText: string;
+  labels: string[];
+  values: Record<string, string>;
 };
 
 type VisibleRow =
@@ -281,17 +300,45 @@ function App() {
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [varMap, setVarMap] = useState<Record<string, string>>({});
   const [drillStack, setDrillStack] = useState<DrillFrame[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState("all");
+  const [groupTabIndex, setGroupTabIndex] = useState(0);
+  const [bracketPrompt, setBracketPrompt] = useState<BracketPromptState | null>(null);
+  const bracketPromptRef = useRef<BracketPromptState | null>(null);
+  bracketPromptRef.current = bracketPrompt;
+  const themeSettingRef = useRef(normalizeUiTheme(undefined));
 
   const uniqueTemplates = useMemo(() => dedupeTemplatesById(templates), [templates]);
+  const groupTabs = useMemo<GroupTab[]>(() => {
+    const byId = new Map<string, GroupTab>();
+    for (const t of uniqueTemplates) {
+      if (!t.groupId) continue;
+      if (!byId.has(t.groupId)) {
+        byId.set(t.groupId, {
+          id: t.groupId,
+          title: t.groupTitle || "Группа",
+          color: t.groupColor || "#5164f2",
+        });
+      }
+    }
+    return Array.from(byId.values());
+  }, [uniqueTemplates]);
+  const groupIds = useMemo(() => ["all", ...groupTabs.map((g) => g.id)], [groupTabs]);
+  const templatesByGroup = useMemo(
+    () =>
+      activeGroupId === "all"
+        ? uniqueTemplates
+        : uniqueTemplates.filter((t) => t.groupId === activeGroupId),
+    [activeGroupId, uniqueTemplates],
+  );
   const searching = query.trim().length > 0;
   const searchHits = useMemo(
-    () => buildSearchHits(uniqueTemplates, query),
-    [uniqueTemplates, query],
+    () => buildSearchHits(templatesByGroup, query),
+    [templatesByGroup, query],
   );
 
   const filteredBrowse = useMemo(
-    () => browseRows(uniqueTemplates, searching ? [] : drillStack),
-    [uniqueTemplates, drillStack, searching],
+    () => browseRows(templatesByGroup, searching ? [] : drillStack),
+    [templatesByGroup, drillStack, searching],
   );
 
   const activeList: "search" | "browse" = searching ? "search" : "browse";
@@ -300,13 +347,27 @@ function App() {
 
   selectedIndexRef.current = selectedIndex;
 
-  const reloadData = useCallback(async () => {
+  const reloadData = useCallback(async (opts?: { resetGroupFilter?: boolean }) => {
     try {
-      const [rows, vars] = await Promise.all([
+      const [rows, vars, cfg] = await Promise.all([
         invoke<TemplateRow[]>("snipcast_list_templates"),
         invoke<Record<string, unknown>>("snipcast_get_variables"),
+        invoke<AppConfig>("snipcast_get_config"),
       ]);
+      const theme = normalizeUiTheme(cfg.theme);
+      const density = normalizePaletteListDensity(cfg.paletteListDensity);
+      themeSettingRef.current = theme;
+      applyUiThemeSetting(theme);
+      applyPaletteListDensity(density);
       setTemplates(rows);
+      if (opts?.resetGroupFilter) {
+        setActiveGroupId("all");
+      } else {
+        setActiveGroupId((prev) => {
+          if (prev === "all") return prev;
+          return rows.some((r) => r.groupId === prev) ? prev : "all";
+        });
+      }
       const m: Record<string, string> = {};
       for (const [k, v] of Object.entries(vars)) {
         m[k] = typeof v === "string" ? v : String(v);
@@ -331,21 +392,71 @@ function App() {
     void invoke("snipcast_open_settings");
   }, []);
 
-  const insertTemplate = useCallback(
-    async (raw: string) => {
-      const text = substituteVars(raw).trim();
-      if (!text) return;
-      try {
-        await invoke("paste_template", { text });
-      } catch {
-        /* см. README: macOS — доступ */
+  const pastePlainText = useCallback(async (text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    try {
+      await invoke("paste_template", { text: t });
+    } catch {
+      /* см. README: macOS — доступ */
+    }
+  }, []);
+
+  const startInsert = useCallback(
+    (raw: string) => {
+      const afterVars = substituteVars(raw);
+      const labels = extractOrderedBracketLabels(afterVars);
+      if (labels.length === 0) {
+        void pastePlainText(afterVars);
+        return;
       }
+      const values: Record<string, string> = {};
+      for (const lab of labels) values[lab] = "";
+      setBracketPrompt({ baseText: afterVars, labels, values });
     },
-    [substituteVars],
+    [substituteVars, pastePlainText],
+  );
+
+  const handleBracketFormKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLFormElement>) => {
+      if (e.key !== "Enter" || (!e.metaKey && !e.ctrlKey)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void (async () => {
+        const prev = bracketPromptRef.current;
+        if (!prev) return;
+        const el = document.activeElement;
+        if (!(el instanceof HTMLInputElement)) return;
+        const lab = el.dataset.bracketLabel;
+        if (!lab || !prev.labels.includes(lab)) return;
+        try {
+          const clip = await invoke<string>("snipcast_clipboard_read_text");
+          const newValues = { ...prev.values, [lab]: clip };
+          const merged = applyBracketReplacements(prev.baseText, prev.labels, newValues);
+          setBracketPrompt(null);
+          await pastePlainText(merged);
+        } catch {
+          /* буфер или вставка в целевое приложение */
+        }
+      })();
+    },
+    [pastePlainText],
   );
 
   useEffect(() => {
     void reloadData();
+  }, [reloadData]);
+
+  /** Палитра живёт в скрытом окне: при каждом показе подтягиваем шаблоны с диска (настройки, мастер-папка). */
+  useEffect(() => {
+    let cancelled = false;
+    const unlistenPromise = getCurrentWindow().listen("tauri://focus", () => {
+      if (!cancelled) void reloadData();
+    });
+    return () => {
+      cancelled = true;
+      void unlistenPromise.then((fn) => fn());
+    };
   }, [reloadData]);
 
   const navLength = activeList === "search" ? searchHitLength : browseLength;
@@ -353,6 +464,11 @@ function App() {
   useEffect(() => {
     setSelectedIndex(0);
   }, [query, drillStack, searching, navLength]);
+
+  useEffect(() => {
+    const idx = groupIds.indexOf(activeGroupId);
+    setGroupTabIndex(idx >= 0 ? idx : 0);
+  }, [activeGroupId, groupIds]);
 
   useEffect(() => {
     if (searching || activeList !== "browse" || filteredBrowse.length === 0) return;
@@ -380,10 +496,11 @@ function App() {
       void getCurrentWindow()
         .onFocusChanged(({ payload: focused }) => {
           if (focused) {
+            setBracketPrompt(null);
             setQuery("");
             setDrillStack([]);
             setSelectedIndex(0);
-            void reloadData();
+            void reloadData({ resetGroupFilter: true });
             queueMicrotask(() => {
               searchRef.current?.focus();
               searchRef.current?.select();
@@ -406,7 +523,31 @@ function App() {
   }, [reloadData]);
 
   useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onScheme = () => {
+      if (themeSettingRef.current === "system") {
+        applyUiThemeSetting("system");
+      }
+    };
+    mq.addEventListener("change", onScheme);
+    return () => mq.removeEventListener("change", onScheme);
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const bp = bracketPromptRef.current;
+      if (bp) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setBracketPrompt(null);
+          return;
+        }
+        const el = e.target as HTMLElement | null;
+        if (el?.closest?.(".palette__modal")) return;
+        e.preventDefault();
+        return;
+      }
+
       if (e.key === "Escape") {
         e.preventDefault();
         if (drillStack.length > 0 && !searching) {
@@ -459,6 +600,19 @@ function App() {
         return;
       }
 
+      if (e.key === "Tab" && !searching) {
+        e.preventDefault();
+        if (groupIds.length <= 1) return;
+        const next = e.shiftKey
+          ? (groupTabIndex - 1 + groupIds.length) % groupIds.length
+          : (groupTabIndex + 1) % groupIds.length;
+        setGroupTabIndex(next);
+        setActiveGroupId(groupIds[next]!);
+        setDrillStack([]);
+        setSelectedIndex(0);
+        return;
+      }
+
       if (e.key === "ArrowLeft" && !searching && drillStack.length > 0) {
         e.preventDefault();
         setDrillStack((s) => s.slice(0, -1));
@@ -478,7 +632,7 @@ function App() {
         const idx = selectedIndexRef.current;
         if (activeList === "search") {
           const hit = searchHits[idx];
-          if (hit) void insertTemplate(hit.pasteText);
+          if (hit) startInsert(hit.pasteText);
           return;
         }
         const v = filteredBrowse[idx] as VisibleRow | undefined;
@@ -500,7 +654,7 @@ function App() {
           return;
         }
         const pt = visiblePasteText(v);
-        if (pt.trim()) void insertTemplate(pt);
+        if (pt.trim()) startInsert(pt);
       }
     };
 
@@ -509,8 +663,10 @@ function App() {
   }, [
     navLength,
     hide,
-    insertTemplate,
+    startInsert,
     openSettings,
+    groupIds,
+    groupTabIndex,
     activeList,
     searchHits,
     filteredBrowse,
@@ -525,8 +681,6 @@ function App() {
         ? `snipcast-hit-${activeHit.key}`
         : `snipcast-opt-${visibleRowId(filteredBrowse[selectedIndex] as VisibleRow)}`
       : undefined;
-
-  const settingsKbd = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘K" : "Ctrl+K";
 
   return (
     <div className="palette">
@@ -545,21 +699,58 @@ function App() {
             </button>
           </div>
         ) : null}
-        <input
-          ref={searchRef}
-          className="palette__search"
-          type="text"
-          placeholder="🔎 Поиск по шаблонам..."
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setDrillStack([]);
-          }}
-          autoComplete="off"
-          spellCheck={false}
-          aria-controls="snipcast-listbox"
-          aria-activedescendant={activeDescendantId}
-        />
+        <div className="palette__search-wrap">
+          <span className="palette__search-icon" aria-hidden>
+            🔎
+          </span>
+          <input
+            ref={searchRef}
+            className="palette__search"
+            type="text"
+            placeholder="Поиск по шаблонам..."
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setDrillStack([]);
+            }}
+            autoComplete="off"
+            spellCheck={false}
+            aria-controls="snipcast-listbox"
+            aria-activedescendant={activeDescendantId}
+          />
+        </div>
+        <div className="palette__group-tabs" role="tablist" aria-label="Группы">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeGroupId === "all"}
+            className={`palette__group-tab${activeGroupId === "all" ? " is-active" : ""}`}
+            onClick={() => {
+              setActiveGroupId("all");
+              setDrillStack([]);
+              setSelectedIndex(0);
+            }}
+          >
+            Все
+          </button>
+          {groupTabs.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              role="tab"
+              aria-selected={activeGroupId === g.id}
+              className={`palette__group-tab${activeGroupId === g.id ? " is-active" : ""}`}
+              style={{ "--group-color": g.color } as React.CSSProperties}
+              onClick={() => {
+                setActiveGroupId(g.id);
+                setDrillStack([]);
+                setSelectedIndex(0);
+              }}
+            >
+              {g.title}
+            </button>
+          ))}
+        </div>
       </header>
 
       <ul
@@ -585,7 +776,7 @@ function App() {
                   role="option"
                   aria-selected={isSel}
                   onMouseEnter={() => setSelectedIndex(myIndex)}
-                  onClick={() => void insertTemplate(hit.pasteText)}
+                  onClick={() => startInsert(hit.pasteText)}
                 >
                   <span className="palette__subhit-title">
                     {highlightText(hit.title, query)}
@@ -650,7 +841,7 @@ function App() {
                     setSelectedIndex(0);
                     return;
                   }
-                  if (pt.trim()) void insertTemplate(pt);
+                  if (pt.trim()) startInsert(pt);
                 }}
               >
                 <div className="palette__item-row">
@@ -673,18 +864,115 @@ function App() {
 
       <footer className="palette__hints">
         <span>
-          <kbd>↑</kbd> <kbd>↓</kbd> навигация
+          навигация <kbd>↑</kbd> <kbd>↓</kbd>
         </span>
         <span>
-          <kbd>Enter</kbd> вставить
+          вставить <kbd>Enter</kbd>
         </span>
         <span>
-          <kbd>Esc</kbd> {drillStack.length > 0 && !searching ? "назад" : "закрыть"}
+          {drillStack.length > 0 && !searching ? "назад" : "закрыть"} <kbd>Esc</kbd>
         </span>
-        <span className="palette__hints-muted">
-          <kbd>{settingsKbd}</kbd> настройки
+        <span>
+          группы <kbd>Tab</kbd>
+        </span>
+        <span className="palette__hints-muted palette__hints-settings">
+          настройки
+          {/Mac|iPhone|iPad/.test(navigator.userAgent) ? (
+            <>
+              <kbd>⌘</kbd>
+              <kbd>K</kbd>
+            </>
+          ) : (
+            <>
+              <kbd>Ctrl</kbd>
+              <kbd>K</kbd>
+            </>
+          )}
         </span>
       </footer>
+
+      {bracketPrompt ? (
+        <div
+          className="palette__modal-backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setBracketPrompt(null);
+          }}
+        >
+          <div
+            className="palette__modal palette__modal--bracket"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bracket-modal-title"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <header className="palette__modal-chrome">
+              <h3 id="bracket-modal-title" className="palette__modal-title">
+                Ввод шаблона
+              </h3>
+            </header>
+            <form
+              className="palette__modal-body"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const p = bracketPrompt;
+                if (!p) return;
+                const merged = applyBracketReplacements(p.baseText, p.labels, p.values);
+                setBracketPrompt(null);
+                void pastePlainText(merged);
+              }}
+              onKeyDown={handleBracketFormKeyDown}
+            >
+              <div className="palette__modal-fields">
+                {bracketPrompt.labels.map((label, i) => (
+                  <input
+                    key={label}
+                    id={`bracket-in-${i}`}
+                    className="palette__modal-input-bare"
+                    type="text"
+                    data-bracket-label={label}
+                    value={bracketPrompt.values[label] ?? ""}
+                    onChange={(ev) =>
+                      setBracketPrompt((prev) =>
+                        prev
+                          ? { ...prev, values: { ...prev.values, [label]: ev.target.value } }
+                          : prev,
+                      )
+                    }
+                    placeholder={label}
+                    autoFocus={i === 0}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                ))}
+              </div>
+              <p className="palette__modal-field-caption">Введите текст для поля</p>
+              <footer className="palette__hints palette__modal-hints">
+                <span>
+                  отмена <kbd>Esc</kbd>
+                </span>
+                <span>
+                  буфер и применить{" "}
+                  {/Mac|iPhone|iPad/.test(navigator.userAgent) ? (
+                    <>
+                      <kbd>⌘</kbd>
+                      <kbd>Enter</kbd>
+                    </>
+                  ) : (
+                    <>
+                      <kbd>Ctrl</kbd>
+                      <kbd>Enter</kbd>
+                    </>
+                  )}
+                </span>
+                <span>
+                  вставить <kbd>Enter</kbd>
+                </span>
+              </footer>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

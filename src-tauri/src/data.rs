@@ -1,17 +1,12 @@
-//! Папки данных Snipcast и загрузка шаблонов с диска.
-//! Windows: `C:\Snipcast` · macOS: `~/Documents/Snipcast`
-//!
-//! Пользовательские шаблоны (0.21+): `user/structure.json` + файлы `*.txt`
-//! (имя файла без `.txt` = заголовок; превью — сокращённая первая строка тела).
+//! Единое хранилище данных Snipcast.
+//! Шаблоны: каталог `templates/`, по одному JSON на группу (полная `TemplateGroup`) и манифест `groups.json`.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const DEFAULT_PALETTE_HOTKEY: &str = "CommandOrControl+Shift+Backslash";
-
-pub const USER_STRUCTURE_FILE: &str = "structure.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +15,8 @@ pub struct TemplateChild {
     pub title: String,
     pub preview: String,
     pub paste_text: String,
+    #[serde(default)]
+    pub group_id: Option<String>,
     #[serde(default)]
     pub is_separator: bool,
     #[serde(default)]
@@ -35,6 +32,12 @@ pub struct TemplateRow {
     #[serde(default)]
     pub paste_text: Option<String>,
     #[serde(default)]
+    pub group_id: Option<String>,
+    #[serde(default)]
+    pub group_title: Option<String>,
+    #[serde(default)]
+    pub group_color: Option<String>,
+    #[serde(default)]
     pub children: Option<Vec<TemplateChild>>,
     #[serde(default)]
     pub is_separator: bool,
@@ -47,8 +50,10 @@ pub struct AppConfig {
     pub palette_hotkey: String,
     #[serde(default = "default_autostart")]
     pub autostart: bool,
-    #[serde(default)]
-    pub master_templates_path: Option<String>,
+    #[serde(default = "default_ui_theme")]
+    pub theme: String,
+    #[serde(default = "default_palette_list_density")]
+    pub palette_list_density: String,
 }
 
 fn default_autostart() -> bool {
@@ -59,12 +64,21 @@ fn default_palette_hotkey() -> String {
     DEFAULT_PALETTE_HOTKEY.to_string()
 }
 
+fn default_ui_theme() -> String {
+    "dark".to_string()
+}
+
+fn default_palette_list_density() -> String {
+    "normal".to_string()
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             palette_hotkey: DEFAULT_PALETTE_HOTKEY.to_string(),
             autostart: true,
-            master_templates_path: None,
+            theme: default_ui_theme(),
+            palette_list_density: default_palette_list_density(),
         }
     }
 }
@@ -73,37 +87,24 @@ impl Default for AppConfig {
 #[serde(rename_all = "camelCase")]
 pub struct PathsDto {
     pub base_dir: String,
-    pub master_dir: String,
-    pub user_dir: String,
     pub config_path: String,
     pub variables_path: String,
-    pub user_structure_path: String,
-}
-
-// --- Дерево «Свои шаблоны» (structure.json) ---
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UserStructureRoot {
-    #[serde(default = "default_structure_version")]
-    pub version: u32,
-    pub items: Vec<UserStructureItem>,
-}
-
-fn default_structure_version() -> u32 {
-    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum UserStructureItem {
+pub enum TemplateNode {
     #[serde(rename = "template")]
-    Template { file: String },
+    Template {
+        id: String,
+        title: String,
+        content: String,
+    },
     #[serde(rename = "folder")]
     Folder {
         id: String,
         title: String,
-        items: Vec<UserStructureItem>,
+        items: Vec<TemplateNode>,
     },
     #[serde(rename = "separator")]
     Separator { id: String },
@@ -111,22 +112,36 @@ pub enum UserStructureItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UserTxtReadDto {
-    pub file: String,
+pub struct TemplateGroup {
+    pub id: String,
     pub title: String,
-    pub content: String,
+    pub color: String,
+    #[serde(default)]
+    pub is_master: bool,
+    #[serde(default)]
+    pub items: Vec<TemplateNode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub master_source_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UserTxtWriteResultDto {
-    pub file: String,
+pub struct TemplateStore {
+    #[serde(default = "default_template_store_version")]
+    pub version: u32,
+    #[serde(default)]
+    pub groups: Vec<TemplateGroup>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UserTemplateCreateResultDto {
-    pub file: String,
+fn default_template_store_version() -> u32 {
+    1
+}
+
+fn default_template_store() -> TemplateStore {
+    TemplateStore {
+        version: 1,
+        groups: vec![],
+    }
 }
 
 pub fn snipcast_base_dir() -> PathBuf {
@@ -149,18 +164,6 @@ pub fn snipcast_base_dir() -> PathBuf {
     }
 }
 
-pub fn default_master_dir() -> PathBuf {
-    snipcast_base_dir().join("master")
-}
-
-pub fn user_templates_dir() -> PathBuf {
-    snipcast_base_dir().join("user")
-}
-
-pub fn user_structure_path() -> PathBuf {
-    user_templates_dir().join(USER_STRUCTURE_FILE)
-}
-
 pub fn config_path() -> PathBuf {
     snipcast_base_dir().join("config.json")
 }
@@ -169,28 +172,24 @@ pub fn variables_path() -> PathBuf {
     snipcast_base_dir().join("variables.json")
 }
 
-fn resolve_master_dir(config: &AppConfig) -> PathBuf {
-    if let Some(p) = &config.master_templates_path {
-        let t = p.trim();
-        if !t.is_empty() {
-            return PathBuf::from(t);
-        }
-    }
-    default_master_dir()
+pub fn templates_path() -> PathBuf {
+    snipcast_base_dir().join("templates.json")
 }
 
-/// Создаёт папки и дефолтные файлы при первом запуске.
+pub fn template_groups_dir() -> PathBuf {
+    snipcast_base_dir().join("templates")
+}
+
+pub fn groups_manifest_path() -> PathBuf {
+    template_groups_dir().join("groups.json")
+}
+
 pub fn init_data_tree() -> Result<(), String> {
     let base = snipcast_base_dir();
-    let master = default_master_dir();
-    let user = user_templates_dir();
     fs::create_dir_all(&base).map_err(|e| e.to_string())?;
-    fs::create_dir_all(&master).map_err(|e| e.to_string())?;
-    fs::create_dir_all(&user).map_err(|e| e.to_string())?;
 
     if !config_path().exists() {
-        let cfg = AppConfig::default();
-        save_config(&cfg)?;
+        save_config(&AppConfig::default())?;
     }
 
     if !variables_path().exists() {
@@ -204,59 +203,13 @@ pub fn init_data_tree() -> Result<(), String> {
         save_variables_map(&vars)?;
     }
 
-    seed_master_if_empty(&master)?;
-    ensure_user_structure_file()?;
+    let manifest = groups_manifest_path();
+    let legacy = templates_path();
+    if !manifest.exists() && !legacy.exists() {
+        save_template_store(&default_template_store())?;
+    }
 
     Ok(())
-}
-
-fn seed_master_if_empty(master: &Path) -> Result<(), String> {
-    let mut has_json = false;
-    if let Ok(rd) = fs::read_dir(master) {
-        for e in rd.flatten() {
-            if e.path().extension().and_then(|s| s.to_str()) == Some("json") {
-                has_json = true;
-                break;
-            }
-        }
-    }
-    if has_json {
-        return Ok(());
-    }
-
-    let seed = include_str!("../templates/default_master.json");
-    let path = master.join("default.json");
-    fs::write(&path, seed).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-/// Если `structure.json` ещё нет — создать по списку `*.txt` в `user/`.
-pub fn ensure_user_structure_file() -> Result<(), String> {
-    let p = user_structure_path();
-    if p.exists() {
-        return Ok(());
-    }
-    let dir = user_templates_dir();
-    let mut paths: Vec<PathBuf> = fs::read_dir(&dir)
-        .map_err(|e| e.to_string())?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|path| path.extension().and_then(|x| x.to_str()) == Some("txt"))
-        .collect();
-    paths.sort();
-    let items: Vec<UserStructureItem> = paths
-        .into_iter()
-        .filter_map(|path| {
-            path.file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-        })
-        .map(|file| UserStructureItem::Template { file })
-        .collect();
-    let root = UserStructureRoot {
-        version: 1,
-        items,
-    };
-    save_user_structure(&root)
 }
 
 pub fn load_config() -> Result<AppConfig, String> {
@@ -292,35 +245,427 @@ pub fn save_variables_map(map: &serde_json::Map<String, serde_json::Value>) -> R
     fs::write(variables_path(), s).map_err(|e| e.to_string())
 }
 
-fn read_template_file(path: &Path) -> Result<Vec<TemplateRow>, String> {
-    let s = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let v: serde_json::Value = serde_json::from_str(&s).map_err(|e| e.to_string())?;
-    if let Ok(row) = serde_json::from_value::<TemplateRow>(v.clone()) {
-        return Ok(vec![row]);
+pub fn load_template_store() -> Result<TemplateStore, String> {
+    let manifest_path = groups_manifest_path();
+    if manifest_path.exists() {
+        return load_template_store_from_group_files();
     }
-    if let Some(arr) = v.as_array() {
-        let mut out = Vec::new();
-        for item in arr {
-            out.push(serde_json::from_value(item.clone()).map_err(|e| e.to_string())?);
+
+    // Миграция со старой схемы `templates.json` (единый файл).
+    let legacy = templates_path();
+    if legacy.exists() {
+        let s = fs::read_to_string(&legacy).map_err(|e| e.to_string())?;
+        let mut store: TemplateStore = serde_json::from_str(&s).map_err(|e| e.to_string())?;
+        if store.groups.is_empty() {
+            store = default_template_store();
         }
-        return Ok(out);
+        save_template_store(&store)?;
+        return Ok(store);
     }
-    Err(format!("Invalid template JSON: {}", path.display()))
+
+    let store = default_template_store();
+    save_template_store(&store)?;
+    Ok(store)
 }
 
-fn collect_master_templates_in_dir(dir: &Path) -> Result<Vec<TemplateRow>, String> {
-    let mut paths: Vec<PathBuf> = fs::read_dir(dir)
-        .map_err(|e| e.to_string())?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("json"))
-        .collect();
-    paths.sort();
-    let mut all = Vec::new();
-    for p in paths {
-        all.extend(read_template_file(&p)?);
+pub fn save_template_store(store: &TemplateStore) -> Result<(), String> {
+    fs::create_dir_all(template_groups_dir()).map_err(|e| e.to_string())?;
+
+    #[derive(Debug, Clone, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GroupManifestEntry {
+        id: String,
+        title: String,
+        color: String,
+        is_master: bool,
+        #[serde(skip_serializing_if = "String::is_empty")]
+        file: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        master_source_path: Option<String>,
     }
-    Ok(all)
+
+    #[derive(Debug, Clone, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GroupsManifest {
+        version: u32,
+        groups: Vec<GroupManifestEntry>,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PersistedGroupFile<'a> {
+        id: &'a str,
+        title: &'a str,
+        color: &'a str,
+        items: &'a [TemplateNode],
+    }
+
+    fn sanitize_title_for_filename(title: &str) -> String {
+        let trimmed = title.trim();
+        let mut out = String::with_capacity(trimmed.chars().count().min(200));
+        for ch in trimmed.chars() {
+            match ch {
+                '/' | '\\' | ':' | '<' | '>' | '"' | '|' | '?' | '*' | '\0' => out.push('_'),
+                c if c.is_control() => {}
+                c => out.push(c),
+            }
+        }
+        let out = out
+            .trim_end_matches(|c: char| c.is_whitespace() || c == '.')
+            .to_string();
+        const MAX_CHARS: usize = 180;
+        let out: String = if out.chars().count() > MAX_CHARS {
+            out.chars().take(MAX_CHARS).collect()
+        } else {
+            out
+        };
+        if out.is_empty() {
+            "group".to_string()
+        } else {
+            out
+        }
+    }
+
+    fn unique_group_filename(title: &str, used: &mut std::collections::HashSet<String>) -> String {
+        let stem = sanitize_title_for_filename(title);
+        let mut n = 0u32;
+        loop {
+            let file = if n == 0 {
+                format!("{stem}.json")
+            } else {
+                format!("{stem}_{}.json", n + 1)
+            };
+            if used.insert(file.clone()) {
+                return file;
+            }
+            n += 1;
+        }
+    }
+
+    let mut manifest_groups: Vec<GroupManifestEntry> = Vec::new();
+    let mut keep_files: std::collections::HashSet<String> = std::collections::HashSet::new();
+    keep_files.insert("groups.json".to_string());
+    let mut used_filenames: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for g in &store.groups {
+        let linked_master = g.is_master
+            && g.master_source_path
+                .as_ref()
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+
+        if linked_master {
+            let src = g.master_source_path.clone().unwrap();
+            manifest_groups.push(GroupManifestEntry {
+                id: g.id.clone(),
+                title: g.title.clone(),
+                color: g.color.clone(),
+                is_master: true,
+                file: String::new(),
+                master_source_path: Some(src),
+            });
+            continue;
+        }
+
+        let file = unique_group_filename(&g.title, &mut used_filenames);
+        keep_files.insert(file.clone());
+        manifest_groups.push(GroupManifestEntry {
+            id: g.id.clone(),
+            title: g.title.clone(),
+            color: g.color.clone(),
+            is_master: false,
+            file: file.clone(),
+            master_source_path: None,
+        });
+        let body = PersistedGroupFile {
+            id: g.id.as_str(),
+            title: g.title.as_str(),
+            color: g.color.as_str(),
+            items: g.items.as_slice(),
+        };
+        let s = serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?;
+        fs::write(template_groups_dir().join(&file), s).map_err(|e| e.to_string())?;
+    }
+
+    // Удаляем json-файлы групп, которых больше нет в манифесте.
+    if let Ok(rd) = fs::read_dir(template_groups_dir()) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("json") {
+                continue;
+            }
+            let name = e.file_name().to_string_lossy().to_string();
+            if keep_files.contains(&name) {
+                continue;
+            }
+            let _ = fs::remove_file(p);
+        }
+    }
+
+    let manifest = GroupsManifest {
+        version: 1,
+        groups: manifest_groups,
+    };
+    let manifest_s = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+    fs::write(groups_manifest_path(), manifest_s).map_err(|e| e.to_string())?;
+
+    // Поддержка миграции: удаляем legacy файл после успешной записи новой схемы.
+    let legacy = templates_path();
+    if legacy.exists() {
+        let _ = fs::remove_file(legacy);
+    }
+
+    Ok(())
+}
+
+fn load_template_store_from_group_files() -> Result<TemplateStore, String> {
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GroupManifestEntry {
+        id: String,
+        title: String,
+        color: String,
+        #[serde(default)]
+        is_master: bool,
+        #[serde(default)]
+        file: String,
+        #[serde(default)]
+        master_source_path: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GroupItemsFile {
+        #[serde(default)]
+        #[allow(dead_code)]
+        version: u32,
+        #[serde(default)]
+        items: Vec<TemplateNode>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GroupsManifest {
+        #[serde(default)]
+        #[allow(dead_code)]
+        version: u32,
+        #[serde(default)]
+        groups: Vec<GroupManifestEntry>,
+    }
+
+    fn normalize_group_color(mut g: TemplateGroup) -> TemplateGroup {
+        if g.color.trim().is_empty() {
+            g.color = "#5164f2".to_string();
+        }
+        g
+    }
+
+    let ms = fs::read_to_string(groups_manifest_path()).map_err(|e| e.to_string())?;
+    let manifest: GroupsManifest = serde_json::from_str(&ms).map_err(|e| e.to_string())?;
+    let mut groups = Vec::new();
+    for g in manifest.groups {
+        let ext = g
+            .master_source_path
+            .clone()
+            .filter(|s| !s.trim().is_empty());
+
+        if g.is_master && ext.is_some() {
+            let path_str = ext.unwrap();
+            let pb = PathBuf::from(&path_str);
+            match load_group_from_import_path(&pb) {
+                Ok(mut loaded) => {
+                    loaded.id = g.id.clone();
+                    loaded.is_master = true;
+                    loaded.master_source_path = Some(path_str);
+                    groups.push(normalize_group_color(loaded));
+                }
+                Err(_) => {
+                    groups.push(normalize_group_color(TemplateGroup {
+                        id: g.id,
+                        title: g.title,
+                        color: g.color,
+                        is_master: true,
+                        items: vec![],
+                        master_source_path: Some(path_str),
+                    }));
+                }
+            }
+            continue;
+        }
+
+        if g.file.trim().is_empty() {
+            groups.push(normalize_group_color(TemplateGroup {
+                id: g.id,
+                title: g.title,
+                color: g.color,
+                is_master: false,
+                items: vec![],
+                master_source_path: None,
+            }));
+            continue;
+        }
+
+        let file_path = template_groups_dir().join(&g.file);
+        if !file_path.exists() {
+            groups.push(normalize_group_color(TemplateGroup {
+                id: g.id,
+                title: g.title,
+                color: g.color,
+                is_master: false,
+                items: vec![],
+                master_source_path: None,
+            }));
+            continue;
+        }
+        let raw = fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
+        if let Ok(mut file_group) = serde_json::from_str::<TemplateGroup>(&raw) {
+            file_group.id = g.id.clone();
+            file_group.is_master = false;
+            file_group.master_source_path = None;
+            groups.push(normalize_group_color(file_group));
+            continue;
+        }
+        if let Ok(parsed) = serde_json::from_str::<GroupItemsFile>(&raw) {
+            groups.push(normalize_group_color(TemplateGroup {
+                id: g.id,
+                title: g.title,
+                color: g.color,
+                is_master: false,
+                items: parsed.items,
+                master_source_path: None,
+            }));
+            continue;
+        }
+        if let Ok(arr) = serde_json::from_str::<Vec<TemplateNode>>(&raw) {
+            groups.push(normalize_group_color(TemplateGroup {
+                id: g.id,
+                title: g.title,
+                color: g.color,
+                is_master: false,
+                items: arr,
+                master_source_path: None,
+            }));
+            continue;
+        }
+        groups.push(normalize_group_color(TemplateGroup {
+            id: g.id,
+            title: g.title,
+            color: g.color,
+            is_master: false,
+            items: vec![],
+            master_source_path: None,
+        }));
+    }
+
+    if groups.is_empty() {
+        return Ok(default_template_store());
+    }
+
+    Ok(TemplateStore { version: 1, groups })
+}
+
+fn generated_id(prefix: &str) -> String {
+    let ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    format!("{prefix}-{ms}")
+}
+
+fn stem_title_or(path: &Path, fallback: &str) -> String {
+    path.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn parse_group_from_json_value(value: &serde_json::Value, path: &Path) -> Result<TemplateGroup, String> {
+    if let Ok(mut g) = serde_json::from_value::<TemplateGroup>(value.clone()) {
+        g.master_source_path = None;
+        return Ok(g);
+    }
+    if let Ok(store) = serde_json::from_value::<TemplateStore>(value.clone()) {
+        let mut g = store
+            .groups
+            .into_iter()
+            .next()
+            .ok_or_else(|| "В файле нет групп".to_string())?;
+        g.master_source_path = None;
+        return Ok(g);
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct LegacyItems {
+        #[serde(default)]
+        items: Vec<TemplateNode>,
+    }
+    if let Ok(legacy) = serde_json::from_value::<LegacyItems>(value.clone()) {
+        return Ok(TemplateGroup {
+            id: generated_id("group"),
+            title: stem_title_or(path, "group"),
+            color: "#5164f2".to_string(),
+            is_master: false,
+            items: legacy.items,
+            master_source_path: None,
+        });
+    }
+    if let Ok(nodes) = serde_json::from_value::<Vec<TemplateNode>>(value.clone()) {
+        return Ok(TemplateGroup {
+            id: generated_id("group"),
+            title: stem_title_or(path, "group"),
+            color: "#5164f2".to_string(),
+            is_master: false,
+            items: nodes,
+            master_source_path: None,
+        });
+    }
+    Err("Неподдерживаемый формат JSON группы шаблонов".into())
+}
+
+fn load_group_from_import_path(path: &Path) -> Result<TemplateGroup, String> {
+    let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    parse_group_from_json_value(&value, path)
+}
+
+pub fn import_master_group_from_file(path: &str) -> Result<TemplateGroup, String> {
+    let p = PathBuf::from(path);
+    let mut parsed = load_group_from_import_path(&p)?;
+    let id = {
+        let t = parsed.id.trim();
+        if t.is_empty() {
+            generated_id("group")
+        } else {
+            parsed.id.clone()
+        }
+    };
+    parsed.id = id;
+    parsed.is_master = true;
+    if parsed.color.trim().is_empty() {
+        parsed.color = "#5164f2".to_string();
+    }
+    parsed.master_source_path = None;
+    Ok(parsed)
+}
+
+pub fn import_template_group_from_file(path: &str) -> Result<TemplateGroup, String> {
+    let p = PathBuf::from(path);
+    let mut parsed = load_group_from_import_path(&p)?;
+    let id = {
+        let t = parsed.id.trim();
+        if t.is_empty() {
+            generated_id("group")
+        } else {
+            parsed.id.clone()
+        }
+    };
+    parsed.id = id;
+    parsed.is_master = false;
+    if parsed.color.trim().is_empty() {
+        parsed.color = "#5164f2".to_string();
+    }
+    parsed.master_source_path = None;
+    Ok(parsed)
 }
 
 fn preview_from_body(body: &str) -> String {
@@ -334,117 +679,15 @@ fn preview_from_body(body: &str) -> String {
     }
 }
 
-fn validate_txt_filename(name: &str) -> Result<String, String> {
-    let safe = Path::new(name)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| "некорректное имя файла".to_string())?;
-    if !safe.ends_with(".txt") {
-        return Err("ожидается имя файла .txt".into());
-    }
-    if safe.contains("..") || Path::new(safe).components().count() != 1 {
-        return Err("недопустимый путь".into());
-    }
-    Ok(safe.to_string())
-}
-
-fn title_to_stem(title: &str) -> String {
-    let mut s: String = title
-        .chars()
-        .map(|c| match c {
-            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
-            c if c.is_control() => '_',
-            _ => c,
-        })
-        .collect();
-    while s.ends_with('.') || s.ends_with(' ') {
-        s.pop();
-    }
-    let s = s.trim().to_string();
-    if s.is_empty() {
-        "template".to_string()
-    } else {
-        s
-    }
-}
-
-fn validate_structure_items(_items: &[UserStructureItem]) -> Result<(), String> {
-    Ok(())
-}
-
-fn read_user_txt_as_row(dir: &Path, file: &str) -> Result<TemplateRow, String> {
-    let safe = validate_txt_filename(file)?;
-    let path = dir.join(&safe);
-    let body = fs::read_to_string(&path).map_err(|e| format!("{safe}: {e}"))?;
-    let title = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    Ok(TemplateRow {
-        id: format!("u:{safe}"),
-        title,
-        preview: preview_from_body(&body),
-        paste_text: Some(body),
-        children: None,
-        is_separator: false,
-    })
-}
-
-/// Корневой шаблон: `имя.txt` или `подпапка/имя.txt`.
-fn read_user_txt_as_row_any(dir: &Path, file: &str) -> Result<TemplateRow, String> {
-    if file.contains('/') {
-        let ch = read_user_txt_as_child_rel(dir, file)?;
-        Ok(TemplateRow {
-            id: ch.id.clone(),
-            title: ch.title,
-            preview: ch.preview.clone(),
-            paste_text: Some(ch.paste_text.clone()),
-            children: None,
-            is_separator: false,
-        })
-    } else {
-        read_user_txt_as_row(dir, file)
-    }
-}
-
-fn read_user_txt_as_child(dir: &Path, file: &str) -> Result<TemplateChild, String> {
-    let safe = validate_txt_filename(file)?;
-    let path = dir.join(&safe);
-    let body = fs::read_to_string(&path).map_err(|e| format!("{safe}: {e}"))?;
-    let title = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    Ok(TemplateChild {
-        id: format!("u:{safe}"),
-        title,
-        preview: preview_from_body(&body),
-        paste_text: body,
-        is_separator: false,
-        children: None,
-    })
-}
-
-/// Элемент папки: `имя.txt` или `подпапка/имя.txt` (один уровень вложенности).
-fn read_user_txt_as_child_any(dir: &Path, file: &str) -> Result<TemplateChild, String> {
-    if file.contains('/') {
-        read_user_txt_as_child_rel(dir, file)
-    } else {
-        read_user_txt_as_child(dir, file)
-    }
-}
-
 fn first_preview_in_children(children: &[TemplateChild]) -> String {
     for c in children {
         if c.is_separator {
             continue;
         }
         if let Some(ref subs) = c.children {
-            if !subs.is_empty() {
-                let p = first_preview_in_children(subs);
-                if !p.is_empty() {
-                    return p;
-                }
+            let p = first_preview_in_children(subs);
+            if !p.is_empty() {
+                return p;
             }
         } else if !c.preview.is_empty() {
             return c.preview.clone();
@@ -453,349 +696,97 @@ fn first_preview_in_children(children: &[TemplateChild]) -> String {
     String::new()
 }
 
-fn structure_items_to_children(dir: &Path, items: &[UserStructureItem]) -> Result<Vec<TemplateChild>, String> {
-    let mut out = Vec::new();
-    for it in items {
-        match it {
-            UserStructureItem::Template { file } => {
-                out.push(read_user_txt_as_child_any(dir, file)?);
-            }
-            UserStructureItem::Separator { id } => {
-                out.push(TemplateChild {
-                    id: format!("us:{id}"),
-                    title: String::new(),
-                    preview: String::new(),
-                    paste_text: String::new(),
-                    is_separator: true,
-                    children: None,
-                });
-            }
-            UserStructureItem::Folder {
-                id,
-                title,
-                items: inner,
-            } => {
-                let children_vec = structure_items_to_children(dir, inner)?;
-                let preview = first_preview_in_children(&children_vec);
-                out.push(TemplateChild {
-                    id: format!("uf:{id}"),
-                    title: title.clone(),
-                    preview,
-                    paste_text: String::new(),
-                    is_separator: false,
-                    children: Some(children_vec),
-                });
-            }
-        }
-    }
-    Ok(out)
-}
-
-fn user_items_to_rows(dir: &Path, items: &[UserStructureItem]) -> Result<Vec<TemplateRow>, String> {
-    let mut rows = Vec::new();
-    for it in items {
-        match it {
-            UserStructureItem::Template { file } => {
-                rows.push(read_user_txt_as_row_any(dir, file)?);
-            }
-            UserStructureItem::Folder {
-                id,
-                title,
-                items: inner,
-            } => {
-                let children = structure_items_to_children(dir, inner)?;
-                let preview = children
-                    .iter()
-                    .find(|c| !c.is_separator)
-                    .map(|c| c.preview.clone())
-                    .unwrap_or_default();
-                rows.push(TemplateRow {
-                    id: format!("uf:{id}"),
-                    title: title.clone(),
-                    preview,
-                    paste_text: None,
-                    children: Some(children),
-                    is_separator: false,
-                });
-            }
-            UserStructureItem::Separator { id } => {
-                rows.push(TemplateRow {
-                    id: format!("us:{id}"),
-                    title: "—".to_string(),
-                    preview: String::new(),
-                    paste_text: None,
-                    children: None,
-                    is_separator: true,
-                });
-            }
-        }
-    }
-    Ok(rows)
-}
-
-pub fn load_user_structure() -> Result<UserStructureRoot, String> {
-    let p = user_structure_path();
-    if !p.exists() {
-        ensure_user_structure_file()?;
-    }
-    let s = fs::read_to_string(&p).map_err(|e| e.to_string())?;
-    let root: UserStructureRoot = serde_json::from_str(&s).map_err(|e| e.to_string())?;
-    validate_structure_items(&root.items)?;
-    Ok(root)
-}
-
-pub fn save_user_structure(root: &UserStructureRoot) -> Result<(), String> {
-    validate_structure_items(&root.items)?;
-    fs::create_dir_all(user_templates_dir()).map_err(|e| e.to_string())?;
-    let s = serde_json::to_string_pretty(root).map_err(|e| e.to_string())?;
-    fs::write(user_structure_path(), s).map_err(|e| e.to_string())
-}
-
-/// Все `file` из structure.json (рекурсивно).
-fn collect_referenced_txt_files(items: &[UserStructureItem]) -> HashSet<String> {
-    let mut set = HashSet::new();
-    fn walk(items: &[UserStructureItem], set: &mut HashSet<String>) {
-        for it in items {
-            match it {
-                UserStructureItem::Template { file } => {
-                    set.insert(file.clone());
-                }
-                UserStructureItem::Folder { items: inner, .. } => walk(inner, set),
-                UserStructureItem::Separator { .. } => {}
-            }
-        }
-    }
-    walk(items, &mut set);
-    set
-}
-
-/// Относительный путь: `имя.txt` или `подпапка/имя.txt` (без `..` и `\`).
-fn validate_user_txt_relative(dir: &Path, rel: &str) -> Result<PathBuf, String> {
-    if rel.contains('\\') || rel.contains("..") {
-        return Err("недопустимый путь к шаблону".into());
-    }
-    let parts: Vec<&str> = rel.split('/').filter(|s| !s.is_empty()).collect();
-    if parts.is_empty() || parts.len() > 2 {
-        return Err("недопустимая глубина пути".into());
-    }
-    for p in &parts {
-        if p.is_empty() || *p == "." || *p == ".." {
-            return Err("недопустимый путь".into());
-        }
-    }
-    let last = parts[parts.len() - 1];
-    if !last.ends_with(".txt") {
-        return Err("ожидается .txt".into());
-    }
-    let mut full = dir.to_path_buf();
-    for part in &parts {
-        full.push(part);
-    }
-    Ok(full)
-}
-
-fn read_user_txt_as_child_rel(dir: &Path, rel: &str) -> Result<TemplateChild, String> {
-    let path = validate_user_txt_relative(dir, rel)?;
-    let body = fs::read_to_string(&path).map_err(|e| format!("{rel}: {e}"))?;
-    let title = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let rel_norm = rel.replace('\\', "/");
-    Ok(TemplateChild {
-        id: format!("u:{rel_norm}"),
-        title,
-        preview: preview_from_body(&body),
-        paste_text: body,
-        is_separator: false,
-        children: None,
-    })
-}
-
-/// Шаблоны и папки на диске, которых нет в structure.json, добавляются в конец списка.
-fn append_orphan_disk_items(
-    dir: &Path,
-    structure_items: &[UserStructureItem],
-    rows: &mut Vec<TemplateRow>,
-) -> Result<(), String> {
-    let referenced = collect_referenced_txt_files(structure_items);
-    let rd = match fs::read_dir(dir) {
-        Ok(r) => r,
-        Err(_) => return Ok(()),
-    };
-
-    let mut root_txt: Vec<String> = Vec::new();
-    let mut subdirs: Vec<String> = Vec::new();
-
-    for e in rd.flatten() {
-        let p = e.path();
-        let name = e.file_name().to_string_lossy().into_owned();
-        if name == USER_STRUCTURE_FILE {
-            continue;
-        }
-        if p.is_dir() {
-            subdirs.push(name);
-        } else if p.extension().and_then(|x| x.to_str()) == Some("txt") {
-            root_txt.push(name);
-        }
-    }
-
-    root_txt.sort();
-    for file in root_txt {
-        if referenced.contains(&file) {
-            continue;
-        }
-        rows.push(read_user_txt_as_row(dir, &file)?);
-    }
-
-    subdirs.sort();
-    for sub in subdirs {
-        let sub_path = dir.join(&sub);
-        if !sub_path.is_dir() {
-            continue;
-        }
-        let mut rel_files: Vec<String> = Vec::new();
-        if let Ok(srd) = fs::read_dir(&sub_path) {
-            for e in srd.flatten() {
-                let p = e.path();
-                if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("txt") {
-                    let fname = e.file_name().to_string_lossy().into_owned();
-                    rel_files.push(format!("{sub}/{fname}"));
-                }
-            }
-        }
-        if rel_files.is_empty() {
-            continue;
-        }
-        rel_files.retain(|rel| !referenced.contains(rel));
-        if rel_files.is_empty() {
-            continue;
-        }
-        rel_files.sort();
-        let mut children: Vec<TemplateChild> = Vec::new();
-        for rel in &rel_files {
-            children.push(read_user_txt_as_child_rel(dir, rel)?);
-        }
-        let preview = first_preview_in_children(&children);
-        rows.push(TemplateRow {
-            id: format!("uf:orphan-dir:{sub}"),
-            title: sub.clone(),
-            preview,
-            paste_text: None,
-            children: Some(children),
+fn node_to_child(group: &TemplateGroup, node: &TemplateNode) -> TemplateChild {
+    match node {
+        TemplateNode::Template { id, title, content } => TemplateChild {
+            id: format!("{}:{id}", group.id),
+            title: title.clone(),
+            preview: preview_from_body(content),
+            paste_text: content.clone(),
+            group_id: Some(group.id.clone()),
             is_separator: false,
-        });
+            children: None,
+        },
+        TemplateNode::Separator { id } => TemplateChild {
+            id: format!("{}:sep:{id}", group.id),
+            title: String::new(),
+            preview: String::new(),
+            paste_text: String::new(),
+            group_id: Some(group.id.clone()),
+            is_separator: true,
+            children: None,
+        },
+        TemplateNode::Folder { id, title, items } => {
+            let children: Vec<TemplateChild> = items.iter().map(|n| node_to_child(group, n)).collect();
+            TemplateChild {
+                id: format!("{}:folder:{id}", group.id),
+                title: title.clone(),
+                preview: first_preview_in_children(&children),
+                paste_text: String::new(),
+                group_id: Some(group.id.clone()),
+                is_separator: false,
+                children: Some(children),
+            }
+        }
     }
-
-    Ok(())
 }
 
-fn load_user_template_rows() -> Result<Vec<TemplateRow>, String> {
-    let dir = user_templates_dir();
-    if !dir.exists() {
-        return Ok(vec![]);
+fn node_to_row(group: &TemplateGroup, node: &TemplateNode) -> TemplateRow {
+    match node {
+        TemplateNode::Template { id, title, content } => TemplateRow {
+            id: format!("{}:{id}", group.id),
+            title: title.clone(),
+            preview: preview_from_body(content),
+            paste_text: Some(content.clone()),
+            group_id: Some(group.id.clone()),
+            group_title: Some(group.title.clone()),
+            group_color: Some(group.color.clone()),
+            children: None,
+            is_separator: false,
+        },
+        TemplateNode::Separator { id } => TemplateRow {
+            id: format!("{}:sep:{id}", group.id),
+            title: "—".to_string(),
+            preview: String::new(),
+            paste_text: None,
+            group_id: Some(group.id.clone()),
+            group_title: Some(group.title.clone()),
+            group_color: Some(group.color.clone()),
+            children: None,
+            is_separator: true,
+        },
+        TemplateNode::Folder { id, title, items } => {
+            let children: Vec<TemplateChild> = items.iter().map(|n| node_to_child(group, n)).collect();
+            TemplateRow {
+                id: format!("{}:folder:{id}", group.id),
+                title: title.clone(),
+                preview: first_preview_in_children(&children),
+                paste_text: None,
+                group_id: Some(group.id.clone()),
+                group_title: Some(group.title.clone()),
+                group_color: Some(group.color.clone()),
+                children: Some(children),
+                is_separator: false,
+            }
+        }
     }
-    let root = load_user_structure()?;
-    let mut rows = user_items_to_rows(&dir, &root.items)?;
-    append_orphan_disk_items(&dir, &root.items, &mut rows)?;
-    Ok(rows)
 }
 
-pub fn load_all_templates(config: &AppConfig) -> Result<Vec<TemplateRow>, String> {
-    let master = resolve_master_dir(config);
+pub fn load_all_templates(_config: &AppConfig) -> Result<Vec<TemplateRow>, String> {
+    let store = load_template_store()?;
     let mut rows = Vec::new();
-    if master.exists() {
-        rows.extend(collect_master_templates_in_dir(&master)?);
+    for group in &store.groups {
+        for item in &group.items {
+            rows.push(node_to_row(group, item));
+        }
     }
-    rows.extend(load_user_template_rows()?);
     Ok(rows)
 }
 
-pub fn paths_dto(config: &AppConfig) -> PathsDto {
+pub fn paths_dto(_config: &AppConfig) -> PathsDto {
     PathsDto {
         base_dir: snipcast_base_dir().to_string_lossy().into(),
-        master_dir: resolve_master_dir(config).to_string_lossy().into(),
-        user_dir: user_templates_dir().to_string_lossy().into(),
         config_path: config_path().to_string_lossy().into(),
         variables_path: variables_path().to_string_lossy().into(),
-        user_structure_path: user_structure_path().to_string_lossy().into(),
     }
-}
-
-pub fn read_user_template_txt(file: &str) -> Result<UserTxtReadDto, String> {
-    let safe = validate_txt_filename(file)?;
-    let dir = user_templates_dir();
-    let path = dir.join(&safe);
-    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let title = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    Ok(UserTxtReadDto {
-        file: safe,
-        title,
-        content,
-    })
-}
-
-pub fn write_user_template_txt(
-    old_file: Option<&str>,
-    title: &str,
-    content: &str,
-) -> Result<UserTxtWriteResultDto, String> {
-    let dir = user_templates_dir();
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-
-    let stem = title_to_stem(title);
-    let mut candidate = format!("{stem}.txt");
-    let old = old_file.map(|o| validate_txt_filename(o)).transpose()?;
-
-    if let Some(ref o) = old {
-        if o == &candidate {
-            fs::write(dir.join(o), content).map_err(|e| e.to_string())?;
-            return Ok(UserTxtWriteResultDto { file: o.clone() });
-        }
-    }
-
-    let mut n = 2u32;
-    while dir.join(&candidate).exists() && Some(candidate.as_str()) != old.as_deref() {
-        candidate = format!("{stem}_{n}.txt");
-        n += 1;
-    }
-
-    fs::write(dir.join(&candidate), content).map_err(|e| e.to_string())?;
-
-    if let Some(o) = old {
-        if o != candidate {
-            let op = dir.join(o);
-            if op.exists() {
-                fs::remove_file(&op).map_err(|e| e.to_string())?;
-            }
-        }
-    }
-
-    Ok(UserTxtWriteResultDto { file: candidate })
-}
-
-pub fn create_user_template_file() -> Result<UserTemplateCreateResultDto, String> {
-    let dir = user_templates_dir();
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let stem = "Новый шаблон";
-    let mut candidate = format!("{stem}.txt");
-    let mut n = 2u32;
-    while dir.join(&candidate).exists() {
-        candidate = format!("{stem}_{n}.txt");
-        n += 1;
-    }
-    fs::write(dir.join(&candidate), "\n").map_err(|e| e.to_string())?;
-    Ok(UserTemplateCreateResultDto { file: candidate })
-}
-
-pub fn delete_user_template_txt(file: &str) -> Result<(), String> {
-    let safe = validate_txt_filename(file)?;
-    let path = user_templates_dir().join(&safe);
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| e.to_string())?;
-    }
-    Ok(())
 }

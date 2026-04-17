@@ -3,6 +3,7 @@ export type TemplateChild = {
   title: string;
   preview: string;
   pasteText: string;
+  groupId?: string;
   isSeparator?: boolean;
   /** Вложенные папки (подпункты) */
   children?: TemplateChild[];
@@ -13,46 +14,45 @@ export type TemplateRow = {
   title: string;
   preview: string;
   pasteText?: string;
+  groupId?: string;
+  groupTitle?: string;
+  groupColor?: string;
   children?: TemplateChild[];
   isSeparator?: boolean;
 };
 
+export type UiThemeSetting = "light" | "dark" | "system";
+export type PaletteListDensity = "normal" | "compact";
+
 export type AppConfig = {
   paletteHotkey: string;
   autostart: boolean;
-  masterTemplatesPath: string | null;
+  theme: UiThemeSetting;
+  paletteListDensity: PaletteListDensity;
 };
 
 export type PathsDto = {
   baseDir: string;
-  masterDir: string;
-  userDir: string;
   configPath: string;
   variablesPath: string;
-  userStructurePath: string;
 };
 
-/** Элементы `user/structure.json` (порядок в палитре). */
-export type UserStructureItem =
-  | { type: "template"; file: string }
-  | { type: "folder"; id: string; title: string; items: UserStructureItem[] }
+export type TemplateNode =
+  | { type: "template"; id: string; title: string; content: string }
+  | { type: "folder"; id: string; title: string; items: TemplateNode[] }
   | { type: "separator"; id: string };
 
-export type UserStructureRoot = {
-  version: number;
-  items: UserStructureItem[];
-};
-
-export type UserTxtReadDto = {
-  file: string;
+export type TemplateGroup = {
+  id: string;
   title: string;
-  content: string;
+  color: string;
+  isMaster: boolean;
+  /** Абсолютный путь к JSON мастер-группы (не копируется в папку шаблонов). */
+  masterSourcePath?: string | null;
+  items: TemplateNode[];
 };
 
-export type UserTxtWriteResultDto = {
-  file: string;
-};
-
-export type UserTemplateCreateResultDto = {
-  file: string;
+export type TemplateStore = {
+  version: number;
+  groups: TemplateGroup[];
 };
