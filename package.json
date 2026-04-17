@@ -1,7 +1,10 @@
 {
   "name": "snipcast",
   "private": true,
-  "version": "0.21.0",
+  "version": "0.30.0",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
