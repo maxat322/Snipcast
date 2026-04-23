@@ -1,7 +1,7 @@
 {
   "name": "snipcast",
   "private": true,
-  "version": "0.30.0",
+  "version": "0.31.0",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "icons": "tauri icon public/Snipcast-icon-square.svg && node scripts/prune-desktop-icons.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",

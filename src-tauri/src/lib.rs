@@ -1,11 +1,4 @@
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod data;
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-mod paste_target;
-
-#[cfg(any(target_os = "android", target_os = "ios"))]
-#[path = "paste_target_stub.rs"]
 mod paste_target;
 
 #[cfg(target_os = "macos")]
@@ -23,10 +16,7 @@ use tauri::{
 
 use paste_target::PasteTarget;
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use tauri_plugin_autostart::ManagerExt;
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use tauri_plugin_global_shortcut::{
     Builder as ShortcutPluginBuilder, GlobalShortcutExt, Shortcut, ShortcutState,
 };
@@ -94,7 +84,6 @@ fn hide_palette(app: &tauri::AppHandle) {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn apply_palette_hotkey(app: &tauri::AppHandle, previous: Option<&str>, next: &str) -> Result<(), String> {
     let next = next.trim();
     Shortcut::from_str(next).map_err(|e| e.to_string())?;
@@ -125,41 +114,31 @@ fn paste_template(
     target: State<'_, Mutex<PasteTarget>>,
     text: String,
 ) -> Result<(), String> {
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        hide_palette(&app);
+    let text = text.trim().to_string();
+    if text.is_empty() {
         return Ok(());
     }
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        let text = text.trim().to_string();
-        if text.is_empty() {
-            return Ok(());
-        }
+    refresh_paste_target(&app);
 
-        refresh_paste_target(&app);
+    arboard::Clipboard::new()
+        .map_err(|e| e.to_string())?
+        .set_text(text)
+        .map_err(|e| e.to_string())?;
 
-        arboard::Clipboard::new()
-            .map_err(|e| e.to_string())?
-            .set_text(text)
-            .map_err(|e| e.to_string())?;
+    hide_palette(&app);
 
-        hide_palette(&app);
+    let snap = target.lock().map_err(|e| e.to_string())?.clone();
 
-        let snap = target.lock().map_err(|e| e.to_string())?.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(280));
+        paste_target::paste_into_previous(&snap);
+    });
 
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(280));
-            paste_target::paste_into_previous(&snap);
-        });
-
-        Ok(())
-    }
+    Ok(())
 }
 
 /// Чтение текста из буфера обмена ОС (WebView `navigator.clipboard` в палитре часто недоступен).
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_clipboard_read_text() -> Result<String, String> {
     let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
@@ -169,20 +148,17 @@ fn snipcast_clipboard_read_text() -> Result<String, String> {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_get_paths(state: State<'_, Mutex<data::AppConfig>>) -> Result<data::PathsDto, String> {
     let cfg = state.lock().map_err(|e| e.to_string())?;
     Ok(data::paths_dto(&cfg))
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_get_config(state: State<'_, Mutex<data::AppConfig>>) -> Result<data::AppConfig, String> {
     Ok(state.lock().map_err(|e| e.to_string())?.clone())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_save_config(
     app: tauri::AppHandle,
@@ -205,7 +181,6 @@ fn snipcast_save_config(
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_palette_hotkey_pause(app: tauri::AppHandle, state: State<'_, Mutex<data::AppConfig>>) -> Result<(), String> {
     let cfg = state.lock().map_err(|e| e.to_string())?;
@@ -213,7 +188,6 @@ fn snipcast_palette_hotkey_pause(app: tauri::AppHandle, state: State<'_, Mutex<d
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_palette_hotkey_resume(app: tauri::AppHandle, state: State<'_, Mutex<data::AppConfig>>) -> Result<(), String> {
     let cfg = state.lock().map_err(|e| e.to_string())?;
@@ -223,50 +197,47 @@ fn snipcast_palette_hotkey_resume(app: tauri::AppHandle, state: State<'_, Mutex<
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_get_variables() -> Result<serde_json::Map<String, serde_json::Value>, String> {
     data::load_variables_map()
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_save_variables(map: serde_json::Map<String, serde_json::Value>) -> Result<(), String> {
     data::save_variables_map(&map)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_list_templates(state: State<'_, Mutex<data::AppConfig>>) -> Result<Vec<data::TemplateRow>, String> {
     let cfg = state.lock().map_err(|e| e.to_string())?;
     data::load_all_templates(&cfg)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_get_template_store() -> Result<data::TemplateStore, String> {
     data::load_template_store()
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_save_template_store(store: data::TemplateStore) -> Result<(), String> {
     data::save_template_store(&store)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_import_master_group(path: String) -> Result<data::TemplateGroup, String> {
     data::import_master_group_from_file(&path)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_import_template_group(path: String) -> Result<data::TemplateGroup, String> {
     data::import_template_group_from_file(&path)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tauri::command]
+fn snipcast_export_template_group(group_id: String, path: String) -> Result<(), String> {
+    data::export_template_group_to_file(&group_id, &path)
+}
+
 #[tauri::command]
 fn snipcast_open_settings(app: tauri::AppHandle) -> Result<(), String> {
     let w = app
@@ -277,53 +248,43 @@ fn snipcast_open_settings(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 fn snipcast_get_version() -> Result<String, String> {
     Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        if let Err(e) = data::init_data_tree() {
-            eprintln!("[snipcast] init_data_tree: {e}");
-        }
+    if let Err(e) = data::init_data_tree() {
+        eprintln!("[snipcast] init_data_tree: {e}");
     }
 
-    let mut builder = tauri::Builder::default();
+    // Загружаем до setup: окно палитры может вызвать IPC сразу после load, а state из setup приходит позже.
+    let initial_cfg = data::load_config().unwrap_or_default();
+    let setup_hotkey = initial_cfg.palette_hotkey.clone();
+    let setup_autostart = initial_cfg.autostart;
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        builder = builder
-            .plugin(tauri_plugin_autostart::Builder::new().build())
-            .plugin(tauri_plugin_opener::init())
-            .plugin(tauri_plugin_dialog::init())
-            .plugin(ShortcutPluginBuilder::new().build());
-    }
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(ShortcutPluginBuilder::new().build());
 
     builder = builder
         .manage(Mutex::new(None::<i32>))
         .manage(Mutex::new(PasteTarget::default()))
-        .setup(|app| {
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            {
-                let cfg = data::load_config().unwrap_or_default();
-                let hotkey = cfg.palette_hotkey.clone();
-                let autostart = cfg.autostart;
-                if let Err(e) = apply_palette_hotkey(&app.handle(), None, &hotkey) {
-                    eprintln!("[snipcast] palette hotkey register failed ({hotkey}): {e}");
-                    let fallback = data::DEFAULT_PALETTE_HOTKEY;
-                    if hotkey.trim() != fallback {
-                        let _ = apply_palette_hotkey(&app.handle(), None, fallback);
-                    }
+        .manage(Mutex::new(initial_cfg.clone()))
+        .setup(move |app| {
+            let hotkey = setup_hotkey;
+            if let Err(e) = apply_palette_hotkey(&app.handle(), None, &hotkey) {
+                eprintln!("[snipcast] palette hotkey register failed ({hotkey}): {e}");
+                let fallback = data::DEFAULT_PALETTE_HOTKEY;
+                if hotkey.trim() != fallback {
+                    let _ = apply_palette_hotkey(&app.handle(), None, fallback);
                 }
-                app.manage(Mutex::new(cfg));
+            }
 
-                if autostart {
-                    let _ = app.autolaunch().enable();
-                }
+            if setup_autostart {
+                let _ = app.autolaunch().enable();
             }
 
             #[cfg(target_os = "macos")]
@@ -334,51 +295,45 @@ pub fn run() {
                 macos_round_corners_now_and_delayed(&app.handle(), &w, 12.0);
             }
 
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            {
-                let show = MenuItem::with_id(app, "show", "Открыть Snipcast", true, None::<&str>)?;
-                let settings = MenuItem::with_id(app, "settings", "Настройки", true, None::<&str>)?;
-                let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
-                let menu = Menu::with_items(app, &[&show, &settings, &quit])?;
+            let show = MenuItem::with_id(app, "show", "Открыть Snipcast", true, None::<&str>)?;
+            let settings = MenuItem::with_id(app, "settings", "Настройки", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &settings, &quit])?;
 
-                let mut tray_builder = TrayIconBuilder::new()
-                    .menu(&menu)
-                    .tooltip("Snipcast")
-                    .show_menu_on_left_click(false)
-                    .on_menu_event(move |app, event| {
-                        match event.id.as_ref() {
-                            "show" => show_palette(app),
-                            "settings" => {
-                                let _ = snipcast_open_settings(app.clone());
-                            }
-                            "quit" => app.exit(0),
-                            _ => {}
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&menu)
+                .tooltip("Snipcast")
+                .show_menu_on_left_click(false)
+                .on_menu_event(move |app, event| {
+                    match event.id.as_ref() {
+                        "show" => show_palette(app),
+                        "settings" => {
+                            let _ = snipcast_open_settings(app.clone());
                         }
-                    })
-                    .on_tray_icon_event(move |tray, event| {
-                        if let TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        } = event
-                        {
-                            show_palette(tray.app_handle());
-                        }
-                    });
+                        "quit" => app.exit(0),
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(move |tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_palette(tray.app_handle());
+                    }
+                });
 
-                if let Some(icon) = app.default_window_icon() {
-                    tray_builder = tray_builder.icon(icon.clone());
-                }
-
-                tray_builder.build(app)?;
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
             }
 
-            Ok(())
-        });
+            tray_builder.build(app)?;
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        builder = builder.invoke_handler(tauri::generate_handler![
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
             palette_hide,
             paste_template,
             snipcast_clipboard_read_text,
@@ -394,19 +349,13 @@ pub fn run() {
             snipcast_save_template_store,
             snipcast_import_master_group,
             snipcast_import_template_group,
+            snipcast_export_template_group,
             snipcast_open_settings,
             snipcast_get_version,
         ]);
-    }
-
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        builder = builder.invoke_handler(tauri::generate_handler![palette_hide, paste_template,]);
-    }
 
     builder
         .on_window_event(|window, event| {
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             if window.label() == SETTINGS_WINDOW_LABEL {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();

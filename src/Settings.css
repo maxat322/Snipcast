@@ -285,7 +285,30 @@ body.settings-body {
 }
 
 .settings__templates-toolbar--groups {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.settings__templates-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 6px 8px;
+}
+
+.settings__group-tags-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.settings__group-tags-label {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #9a9aac;
 }
 
 .settings__group-tags {
@@ -294,7 +317,7 @@ body.settings-body {
   overflow-x: auto;
   white-space: nowrap;
   flex: 1;
-  min-width: 120px;
+  min-width: 0;
   padding: 2px 0;
 }
 
@@ -377,12 +400,17 @@ body.settings-body {
   margin-bottom: 0;
 }
 
-.settings__templates-hint code {
-  font-size: 11px;
-  padding: 0 4px;
-  border-radius: 4px;
-  background: #121214;
-  color: #aeb0be;
+.settings__templates-hint .settings__hint-code {
+  font-size: inherit;
+  font-family: ui-monospace, monospace;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.settings__templates-folder-hint {
+  margin-top: 4px;
 }
 
 .settings__tree-node {
@@ -407,6 +435,11 @@ body.settings-body {
 
 .settings__tree-row:hover {
   background: #25252e;
+  color: #e8e8ec;
+}
+
+.settings__tree-row.is-selected:not(.is-active) {
+  background: #252a38;
   color: #e8e8ec;
 }
 

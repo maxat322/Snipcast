@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { keyboardEventToTauriHotkey, tauriHotkeyToDisplay } from "./hotkeyFormat";
 import type { AppConfig, TemplateGroup, TemplateNode, TemplateStore } from "./types";
@@ -11,6 +19,7 @@ import {
   normalizePaletteListDensity,
   normalizeUiTheme,
 } from "./uiTheme";
+import { SNIPCAST_LOGO_SRC } from "./branding";
 import "./theme-overrides.css";
 import "./Settings.css";
 
@@ -57,40 +66,76 @@ function insertAfterSelection(items: TemplateNode[], selectedPath: number[] | nu
   list.splice(insertAt, 0, item);
 }
 
-function moveSelected(items: TemplateNode[], path: number[] | null, delta: -1 | 1): boolean {
-  if (!path || path.length === 0) return false;
-  const idx = path[path.length - 1]!;
-  let list = items;
-  for (let d = 0; d < path.length - 1; d++) {
-    const node = list[path[d]!];
-    if (!node || node.type !== "folder") return false;
-    list = node.items;
+/** Новый шаблон внутри выбранной папки (в конец списка детей). Возвращает путь к вставленному узлу. */
+function appendTemplateInsideFolder(items: TemplateNode[], folderPath: number[], template: TemplateNode): number[] {
+  const folder = getNodeAtPath(items, folderPath);
+  if (!folder || folder.type !== "folder") {
+    insertAfterSelection(items, folderPath, template);
+    if (!folderPath.length) return [items.length - 1];
+    const np = [...folderPath];
+    np[np.length - 1] = np[np.length - 1]! + 1;
+    return np;
   }
-  const j = idx + delta;
-  if (j < 0 || j >= list.length) return false;
-  const a = list[idx]!;
-  list[idx] = list[j]!;
-  list[j] = a;
-  return true;
+  folder.items.push(template);
+  return [...folderPath, folder.items.length - 1];
 }
 
-function moveIntoFolderBelow(items: TemplateNode[], path: number[]): number[] | null {
+/**
+ * Один выбранный узел: шаг вверх/вниз среди соседей или выход из папки (если уже у верхней/нижней границы).
+ * Вверх: если выше папка — перенос внутрь неё (последний ребёнок).
+ * Вниз: если ниже папка — перенос внутрь неё (первый ребёнок).
+ */
+function tryMoveSingleInTree(items: TemplateNode[], path: number[], delta: -1 | 1): number[] | null {
   if (path.length === 0) return null;
   const idx = path[path.length - 1]!;
-  let list = items;
-  for (let d = 0; d < path.length - 1; d++) {
-    const node = list[path[d]!];
-    if (!node || node.type !== "folder") return null;
-    list = node.items;
+  const parentPath = path.slice(0, -1);
+  const list = getListAtParent(items, parentPath);
+  if (!list || !list[idx]) return null;
+
+  if (delta === -1) {
+    if (idx > 0) {
+      const prev = list[idx - 1];
+      if (prev?.type === "folder") {
+        const [moved] = list.splice(idx, 1);
+        prev.items.push(moved);
+        return [...parentPath, idx - 1, prev.items.length - 1];
+      }
+      if (!moveBlockUpInList(list, idx, idx)) return null;
+      return [...parentPath, idx - 1];
+    }
+    if (parentPath.length === 0) return null;
+    const folderIdx = parentPath[parentPath.length - 1]!;
+    const gpPath = parentPath.slice(0, -1);
+    const parentList = getListAtParent(items, gpPath);
+    if (!parentList) return null;
+    const folderNode = parentList[folderIdx];
+    if (!folderNode || folderNode.type !== "folder") return null;
+    const [moved] = folderNode.items.splice(idx, 1);
+    parentList.splice(folderIdx, 0, moved);
+    return [...gpPath, folderIdx];
   }
-  if (idx + 1 >= list.length) return null;
-  const below = list[idx + 1];
-  if (!below || below.type !== "folder") return null;
-  const [moved] = list.splice(idx, 1);
-  const folderNode = list[idx];
+
+  if (idx < list.length - 1) {
+    const next = list[idx + 1];
+    if (next?.type === "folder") {
+      const [moved] = list.splice(idx, 1);
+      next.items.unshift(moved);
+      return [...parentPath, idx, 0];
+    }
+    if (!moveBlockDownInList(list, idx, idx)) return null;
+    return [...parentPath, idx + 1];
+  }
+
+  if (parentPath.length === 0) return null;
+  const folderIdx = parentPath[parentPath.length - 1]!;
+  const gpPath = parentPath.slice(0, -1);
+  const parentList = getListAtParent(items, gpPath);
+  if (!parentList) return null;
+  const folderNode = parentList[folderIdx];
   if (!folderNode || folderNode.type !== "folder") return null;
-  folderNode.items.unshift(moved);
-  return [...path.slice(0, -1), idx, 0];
+  const [moved] = folderNode.items.splice(idx, 1);
+  parentList.splice(folderIdx + 1, 0, moved);
+  return [...gpPath, folderIdx + 1];
 }
 
 function removeSelected(items: TemplateNode[], path: number[]): boolean {
@@ -104,6 +149,144 @@ function removeSelected(items: TemplateNode[], path: number[]): boolean {
   if (!list[idx]) return false;
   list.splice(idx, 1);
   return true;
+}
+
+function pathKey(path: number[]): string {
+  return path.join(".");
+}
+
+function pathsFromKey(key: string): number[] {
+  if (!key) return [];
+  return key.split(".").map((x) => Number.parseInt(x, 10));
+}
+
+/** Порядок удаления: глубже и с большим индексом раньше, чтобы индексы не сбивались. */
+function pathDeleteOrder(a: number[], b: number[]): number {
+  if (a.length !== b.length) return b.length - a.length;
+  for (let i = a.length - 1; i >= 0; i--) {
+    if (a[i] !== b[i]) return b[i]! - a[i]!;
+  }
+  return 0;
+}
+
+function removePathsFromItems(items: TemplateNode[], paths: number[][]): void {
+  const sorted = [...paths].sort(pathDeleteOrder);
+  for (const p of sorted) {
+    removeSelected(items, p);
+  }
+}
+
+function getListAtParent(items: TemplateNode[], parentPath: number[]): TemplateNode[] | null {
+  if (parentPath.length === 0) return items;
+  let list = items;
+  for (const idx of parentPath) {
+    const node = list[idx];
+    if (!node || node.type !== "folder") return null;
+    list = node.items;
+  }
+  return list;
+}
+
+function moveBlockUpInList(list: TemplateNode[], start: number, end: number): boolean {
+  if (start <= 0) return false;
+  const blockLen = end - start + 1;
+  const block = list.splice(start, blockLen);
+  list.splice(start - 1, 0, ...block);
+  return true;
+}
+
+function moveBlockDownInList(list: TemplateNode[], start: number, end: number): boolean {
+  if (end >= list.length - 1) return false;
+  const blockLen = end - start + 1;
+  const block = list.splice(start, blockLen);
+  list.splice(start + 1, 0, ...block);
+  return true;
+}
+
+function insertManyAfterSelection(items: TemplateNode[], selectedPath: number[] | null, newItems: TemplateNode[]) {
+  if (newItems.length === 0) return;
+  if (!selectedPath || selectedPath.length === 0) {
+    items.push(...newItems);
+    return;
+  }
+  const insertAt = selectedPath[selectedPath.length - 1]! + 1;
+  const parentPath = selectedPath.slice(0, -1);
+  let list = items;
+  for (const idx of parentPath) {
+    const node = list[idx];
+    if (!node || node.type !== "folder") {
+      items.push(...newItems);
+      return;
+    }
+    list = node.items;
+  }
+  list.splice(insertAt, 0, ...newItems);
+}
+
+function isTemplateNodeJson(x: unknown): x is TemplateNode {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  const t = o.type;
+  if (t === "separator") return typeof o.id === "string";
+  if (t === "template")
+    return typeof o.id === "string" && typeof o.title === "string" && typeof o.content === "string";
+  if (t === "folder") {
+    if (typeof o.id !== "string" || typeof o.title !== "string" || !Array.isArray(o.items)) return false;
+    return (o.items as unknown[]).every(isTemplateNodeJson);
+  }
+  return false;
+}
+
+function remapNodeIds(node: TemplateNode): TemplateNode {
+  if (node.type === "template") return { ...node, id: crypto.randomUUID() };
+  if (node.type === "separator") return { type: "separator", id: crypto.randomUUID() };
+  return {
+    ...node,
+    id: crypto.randomUUID(),
+    items: node.items.map(remapNodeIds),
+  };
+}
+
+function parseClipboardNodes(text: string): TemplateNode[] | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(text.trim());
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(data) || !data.every(isTemplateNodeJson)) return null;
+  return data;
+}
+
+function asContiguousBlock(paths: number[][]): { parentPath: number[]; start: number; end: number } | null {
+  if (paths.length === 0) return null;
+  const L = paths[0]!.length;
+  if (L === 0) return null;
+  const parentPath = paths[0]!.slice(0, -1);
+  for (const p of paths) {
+    if (p.length !== L) return null;
+    if (!p.slice(0, -1).every((v, i) => v === parentPath[i])) return null;
+  }
+  const idxs = paths.map((p) => p[p.length - 1]!).sort((a, b) => a - b);
+  for (let i = 1; i < idxs.length; i++) {
+    if (idxs[i] !== idxs[i - 1]! + 1) return null;
+  }
+  return { parentPath, start: idxs[0]!, end: idxs[idxs.length - 1]! };
+}
+
+function selectionAsBlockStrict(selectedKeys: Iterable<string>): { parentPath: number[]; start: number; end: number } | null {
+  const keyArr = [...selectedKeys];
+  const paths = keyArr.map(pathsFromKey).filter((p) => p.length > 0);
+  const block = asContiguousBlock(paths);
+  if (!block) return null;
+  const { parentPath, start, end } = block;
+  const expected = new Set<string>();
+  for (let i = start; i <= end; i++) expected.add(pathKey([...parentPath, i]));
+  if (expected.size !== new Set(keyArr).size) return null;
+  for (const k of keyArr) {
+    if (!expected.has(k)) return null;
+  }
+  return block;
 }
 
 function pathsEqual(a: number[] | null, b: number[]): boolean {
@@ -132,7 +315,9 @@ export function SettingsApp() {
 
   const [store, setStore] = useState<TemplateStore | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const [selectedPath, setSelectedPath] = useState<number[] | null>(null);
+  /** Ключи вида "0.1.2" для мультивыбора (Ctrl+клик). */
+  const [selectedPathKeysArr, setSelectedPathKeysArr] = useState<string[]>([]);
+  const [primaryPath, setPrimaryPath] = useState<number[] | null>(null);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [editorTitle, setEditorTitle] = useState("");
   const [editorContent, setEditorContent] = useState("");
@@ -229,41 +414,77 @@ export function SettingsApp() {
     return store.groups.find((g) => g.id === selectedGroupId) ?? null;
   }, [store, selectedGroupId]);
 
-  const selectedNode = useMemo(() => {
-    if (!selectedGroup || !selectedPath) return null;
-    return getNodeAtPath(selectedGroup.items, selectedPath);
-  }, [selectedGroup, selectedPath]);
+  const selectedPathKeySet = useMemo(() => new Set(selectedPathKeysArr), [selectedPathKeysArr]);
 
   useEffect(() => {
-    if (!selectedNode || selectedNode.type !== "template") {
+    if (selectedPathKeysArr.length === 0) {
+      setPrimaryPath(null);
+      return;
+    }
+    setPrimaryPath((pp) => {
+      if (pp) {
+        const k = pathKey(pp);
+        if (selectedPathKeysArr.includes(k)) return pp;
+      }
+      return pathsFromKey(selectedPathKeysArr[0]!);
+    });
+  }, [selectedPathKeysArr]);
+
+  const selectedNode = useMemo(() => {
+    if (!selectedGroup || !primaryPath) return null;
+    return getNodeAtPath(selectedGroup.items, primaryPath);
+  }, [selectedGroup, primaryPath]);
+
+  useEffect(() => {
+    if (!selectedGroup || !primaryPath) {
       setEditorTitle("");
       setEditorContent("");
       return;
     }
-    setEditorTitle(selectedNode.title);
-    setEditorContent(selectedNode.content);
-  }, [selectedNode?.type, selectedNode && selectedNode.type === "template" ? selectedNode.id : ""]);
+    const node = getNodeAtPath(selectedGroup.items, primaryPath);
+    if (!node) {
+      setEditorTitle("");
+      setEditorContent("");
+      return;
+    }
+    if (node.type === "template") {
+      setEditorTitle(node.title);
+      setEditorContent(node.content);
+      return;
+    }
+    if (node.type === "folder") {
+      setEditorTitle(node.title);
+      setEditorContent("");
+      return;
+    }
+    setEditorTitle("");
+    setEditorContent("");
+  }, [selectedGroup, primaryPath]);
 
   useEffect(() => {
-    if (!store || !selectedGroup || !selectedPath || selectedGroup.isMaster) return;
-    if (!selectedNode || selectedNode.type !== "template") return;
+    if (!store || !selectedGroup || !primaryPath || selectedGroup.isMaster) return;
+    const node = getNodeAtPath(selectedGroup.items, primaryPath);
+    if (!node || (node.type !== "template" && node.type !== "folder")) return;
     const t = window.setTimeout(() => {
       const next = cloneStore(store);
       const g = next.groups.find((x) => x.id === selectedGroup.id);
       if (!g) return;
-      const node = getNodeAtPath(g.items, selectedPath);
-      if (!node || node.type !== "template") return;
-      node.title = editorTitle;
-      node.content = editorContent;
+      const live = getNodeAtPath(g.items, primaryPath);
+      if (!live || live.type !== node.type || live.id !== node.id) return;
+      if (live.type === "template") {
+        live.title = editorTitle;
+        live.content = editorContent;
+      } else {
+        live.title = editorTitle;
+      }
       void persistStore(next).catch(showError);
     }, 350);
     return () => clearTimeout(t);
   }, [
     editorTitle,
     editorContent,
-    selectedPath,
-    selectedNode && selectedNode.type === "template" ? selectedNode.id : "",
-    selectedGroup?.id,
+    primaryPath,
+    selectedGroup,
     selectedGroup?.isMaster,
     store,
     persistStore,
@@ -319,7 +540,8 @@ export function SettingsApp() {
 
   const setSelectedGroup = (groupId: string) => {
     setSelectedGroupId(groupId);
-    setSelectedPath(null);
+    setSelectedPathKeysArr([]);
+    setPrimaryPath(null);
     setEditorTitle("");
     setEditorContent("");
   };
@@ -431,10 +653,25 @@ export function SettingsApp() {
       try {
         await persistStore(next);
         setSelectedGroup(newGroup.id);
-        setSelectedPath(null);
       } catch (e) {
         showError(e);
       }
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const exportSelectedGroupToFile = async () => {
+    if (!store || !selectedGroupId || !selectedGroup || selectedGroup.isMaster) return;
+    const safeTitle = (selectedGroup.title || "group").replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").slice(0, 120);
+    try {
+      const path = await save({
+        title: "Экспорт группы в JSON",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+        defaultPath: `${safeTitle || "group"}.json`,
+      });
+      if (!path) return;
+      await invoke("snipcast_export_template_group", { groupId: selectedGroupId, path });
     } catch (e) {
       showError(e);
     }
@@ -478,93 +715,239 @@ export function SettingsApp() {
         : type === "folder"
           ? { type: "folder", id: crypto.randomUUID(), title: "Новый подпункт", items: [] }
           : { type: "separator", id: crypto.randomUUID() };
-    insertAfterSelection(g.items, selectedPath, node);
+
+    let np: number[];
+    if (type === "template" && primaryPath?.length) {
+      const sel = getNodeAtPath(g.items, primaryPath);
+      if (sel?.type === "folder") {
+        np = appendTemplateInsideFolder(g.items, primaryPath, node);
+      } else {
+        insertAfterSelection(g.items, primaryPath, node);
+        np = [...primaryPath];
+        np[np.length - 1] = np[np.length - 1]! + 1;
+      }
+    } else {
+      insertAfterSelection(g.items, primaryPath, node);
+      if (!primaryPath || primaryPath.length === 0) {
+        np = [g.items.length - 1];
+      } else {
+        np = [...primaryPath];
+        np[np.length - 1] = np[np.length - 1]! + 1;
+      }
+    }
+
     try {
       await persistStore(next);
-      if (!selectedPath || selectedPath.length === 0) {
-        setSelectedPath([g.items.length - 1]);
-      } else {
-        const np = [...selectedPath];
-        np[np.length - 1] = np[np.length - 1]! + 1;
-        setSelectedPath(np);
-      }
+      setSelectedPathKeysArr([pathKey(np)]);
+      setPrimaryPath(np);
     } catch (e) {
       showError(e);
     }
   };
 
   const onMove = async (delta: -1 | 1) => {
-    if (!store || !selectedGroup || !selectedPath || selectedGroup.isMaster) return;
+    if (!store || !selectedGroup || selectedGroup.isMaster || selectedPathKeysArr.length === 0 || !primaryPath) return;
     const next = cloneStore(store);
     const g = next.groups.find((x) => x.id === selectedGroup.id);
     if (!g) return;
-    if (delta === 1) {
-      const intoPath = moveIntoFolderBelow(g.items, selectedPath);
-      if (intoPath) {
-        try {
-          await persistStore(next);
-          setSelectedPath(intoPath);
-          return;
-        } catch (e) {
-          showError(e);
-          return;
-        }
+
+    if (selectedPathKeysArr.length === 1) {
+      const newPath = tryMoveSingleInTree(g.items, primaryPath, delta);
+      if (!newPath) return;
+      try {
+        await persistStore(next);
+        setSelectedPathKeysArr([pathKey(newPath)]);
+        setPrimaryPath(newPath);
+      } catch (e) {
+        showError(e);
       }
+      return;
     }
-    if (!moveSelected(g.items, selectedPath, delta)) return;
+
+    const block = selectionAsBlockStrict(selectedPathKeySet);
+    if (!block) return;
+    const list = getListAtParent(g.items, block.parentPath);
+    if (!list) return;
+    const ok = delta === -1 ? moveBlockUpInList(list, block.start, block.end) : moveBlockDownInList(list, block.start, block.end);
+    if (!ok) return;
     try {
       await persistStore(next);
-      const np = [...selectedPath];
-      np[np.length - 1] = np[np.length - 1]! + delta;
-      setSelectedPath(np);
+      const newStart = delta === -1 ? block.start - 1 : block.start + 1;
+      const len = block.end - block.start + 1;
+      const newKeys = Array.from({ length: len }, (_, i) => pathKey([...block.parentPath, newStart + i]));
+      setSelectedPathKeysArr(newKeys);
+      setPrimaryPath([...block.parentPath, newStart]);
     } catch (e) {
       showError(e);
     }
   };
 
-  const onDeleteNode = async () => {
-    if (!store || !selectedGroup || !selectedPath || selectedGroup.isMaster) return;
+  const onDeleteNode = useCallback(async () => {
+    if (!store || !selectedGroup || selectedPathKeysArr.length === 0 || selectedGroup.isMaster) return;
     const next = cloneStore(store);
     const g = next.groups.find((x) => x.id === selectedGroup.id);
     if (!g) return;
-    if (!removeSelected(g.items, selectedPath)) return;
+    const paths = selectedPathKeysArr.map(pathsFromKey);
+    removePathsFromItems(g.items, paths);
     try {
       await persistStore(next);
-      setSelectedPath(null);
+      setSelectedPathKeysArr([]);
+      setPrimaryPath(null);
       setEditorTitle("");
       setEditorContent("");
     } catch (e) {
       showError(e);
     }
-  };
+  }, [store, selectedGroup, selectedPathKeysArr, persistStore, showError]);
 
-  const canMoveUp = !!selectedPath && selectedPath[selectedPath.length - 1]! > 0 && !selectedGroup?.isMaster;
-  const canMoveDown =
-    !!selectedGroup &&
-    !!selectedPath &&
-    !selectedGroup.isMaster &&
-    (() => {
-      let list = selectedGroup.items;
-      for (let d = 0; d < selectedPath.length - 1; d++) {
-        const n = list[selectedPath[d]!];
-        if (!n || n.type !== "folder") return false;
-        list = n.items;
+  const onCopyTemplateNodes = useCallback(async () => {
+    if (!selectedGroup || selectedPathKeysArr.length === 0) return;
+    const paths = [...selectedPathKeysArr].map(pathsFromKey);
+    const nodes: TemplateNode[] = [];
+    for (const p of paths) {
+      const n = getNodeAtPath(selectedGroup.items, p);
+      if (n) nodes.push(JSON.parse(JSON.stringify(n)) as TemplateNode);
+    }
+    if (nodes.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(nodes));
+    } catch (e) {
+      showError(e);
+    }
+  }, [selectedGroup, selectedPathKeysArr, showError]);
+
+  const onPasteTemplateNodes = useCallback(async () => {
+    if (!store || !selectedGroup || selectedGroup.isMaster) return;
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch (e) {
+      showError(e);
+      return;
+    }
+    const parsed = parseClipboardNodes(text);
+    if (!parsed?.length) {
+      showError("В буфере нет списка шаблонов Snipcast (JSON-массив узлов).");
+      return;
+    }
+    const next = cloneStore(store);
+    const g = next.groups.find((x) => x.id === selectedGroup.id);
+    if (!g) return;
+    const insertPath = primaryPath;
+    let insertAt: number;
+    if (!insertPath || insertPath.length === 0) {
+      insertAt = g.items.length;
+    } else {
+      insertAt = insertPath[insertPath.length - 1]! + 1;
+    }
+    const parentPath = insertPath?.slice(0, -1) ?? [];
+    const fresh = parsed.map(remapNodeIds);
+    insertManyAfterSelection(g.items, insertPath, fresh);
+    try {
+      await persistStore(next);
+      const newKeys = fresh.map((_, i) => pathKey([...parentPath, insertAt + i]));
+      setSelectedPathKeysArr(newKeys);
+      setPrimaryPath(pathsFromKey(newKeys[0]!));
+    } catch (e) {
+      showError(e);
+    }
+  }, [store, selectedGroup, primaryPath, persistStore, showError]);
+
+  useEffect(() => {
+    if (section !== "templates") return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.closest("input, textarea, select, [contenteditable=true]")) return;
+
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.code === "KeyC") {
+        e.preventDefault();
+        void onCopyTemplateNodes();
+        return;
       }
-      const idx = selectedPath[selectedPath.length - 1]!;
-      return idx < list.length - 1;
-    })();
+      if (mod && e.code === "KeyV") {
+        e.preventDefault();
+        void onPasteTemplateNodes();
+        return;
+      }
+      if (e.code === "Delete" || e.code === "Backspace") {
+        if (selectedPathKeysArr.length === 0) return;
+        e.preventDefault();
+        void onDeleteNode();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [section, onCopyTemplateNodes, onPasteTemplateNodes, onDeleteNode, selectedPathKeysArr.length]);
+
+  const blockForNav = useMemo(() => selectionAsBlockStrict(selectedPathKeySet), [selectedPathKeySet]);
+
+  const navListForBlock = useMemo(() => {
+    if (!selectedGroup || !blockForNav) return null;
+    return getListAtParent(selectedGroup.items, blockForNav.parentPath);
+  }, [selectedGroup, blockForNav]);
+
+  const canMoveSingleUp = useMemo(() => {
+    if (!selectedGroup || !primaryPath || selectedGroup.isMaster) return false;
+    if (selectedPathKeysArr.length !== 1) return false;
+    const parentPath = primaryPath.slice(0, -1);
+    const idx = primaryPath[primaryPath.length - 1]!;
+    const list = getListAtParent(selectedGroup.items, parentPath);
+    if (!list) return false;
+    if (idx > 0) return true;
+    return parentPath.length > 0;
+  }, [selectedGroup, primaryPath, selectedPathKeysArr.length]);
+
+  const canMoveSingleDown = useMemo(() => {
+    if (!selectedGroup || !primaryPath || selectedGroup.isMaster) return false;
+    if (selectedPathKeysArr.length !== 1) return false;
+    const parentPath = primaryPath.slice(0, -1);
+    const idx = primaryPath[primaryPath.length - 1]!;
+    const list = getListAtParent(selectedGroup.items, parentPath);
+    if (!list) return false;
+    if (idx < list.length - 1) return true;
+    return parentPath.length > 0;
+  }, [selectedGroup, primaryPath, selectedPathKeysArr.length]);
+
+  const canMoveUp =
+    !selectedGroup?.isMaster &&
+    (selectedPathKeysArr.length === 1
+      ? canMoveSingleUp
+      : !!(blockForNav && navListForBlock && blockForNav.start > 0));
+  const canMoveDown =
+    !selectedGroup?.isMaster &&
+    (selectedPathKeysArr.length === 1
+      ? canMoveSingleDown
+      : !!(blockForNav && navListForBlock && blockForNav.end < navListForBlock.length - 1));
+
+  const onTreeRowClick = (path: number[], e: ReactMouseEvent) => {
+    const rk = pathKey(path);
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedPathKeysArr((prev) => {
+        const s = new Set(prev);
+        if (s.has(rk)) s.delete(rk);
+        else s.add(rk);
+        return [...s];
+      });
+      setPrimaryPath(path);
+    } else {
+      setSelectedPathKeysArr([rk]);
+      setPrimaryPath(path);
+    }
+  };
 
   const renderTree = (items: TemplateNode[], basePath: number[], depth: number): ReactNode =>
     items.map((item, i) => {
       const path = [...basePath, i];
-      const pathKey = path.join(".");
+      const rowKeyStr = pathKey(path);
       const key =
         item.type === "template"
           ? `t-${item.id}`
           : item.type === "folder"
             ? `f-${item.id}`
             : `s-${item.id}`;
-      const active = pathsEqual(selectedPath, path);
+      const isPrimary = pathsEqual(primaryPath, path);
+      const isSelected = selectedPathKeySet.has(rowKeyStr);
       const label =
         item.type === "template"
           ? item.title
@@ -575,22 +958,22 @@ export function SettingsApp() {
         <div key={key} className="settings__tree-node">
           <button
             type="button"
-            className={`settings__tree-row${active ? " is-active" : ""}`}
+            className={`settings__tree-row${isSelected ? " is-selected" : ""}${isPrimary ? " is-active" : ""}`}
             style={{ paddingLeft: 10 + depth * 18 }}
-            onClick={() => setSelectedPath(path)}
+            onClick={(e) => onTreeRowClick(path, e)}
           >
             {item.type === "folder" ? (
               <span
                 className="settings__tree-toggle"
                 role="button"
                 tabIndex={0}
-                aria-label={collapsedFolders.has(pathKey) ? "Развернуть подпункт" : "Свернуть подпункт"}
+                aria-label={collapsedFolders.has(rowKeyStr) ? "Развернуть подпункт" : "Свернуть подпункт"}
                 onClick={(e) => {
                   e.stopPropagation();
                   setCollapsedFolders((prev) => {
                     const next = new Set(prev);
-                    if (next.has(pathKey)) next.delete(pathKey);
-                    else next.add(pathKey);
+                    if (next.has(rowKeyStr)) next.delete(rowKeyStr);
+                    else next.add(rowKeyStr);
                     return next;
                   });
                 }}
@@ -600,13 +983,13 @@ export function SettingsApp() {
                   e.stopPropagation();
                   setCollapsedFolders((prev) => {
                     const next = new Set(prev);
-                    if (next.has(pathKey)) next.delete(pathKey);
-                    else next.add(pathKey);
+                    if (next.has(rowKeyStr)) next.delete(rowKeyStr);
+                    else next.add(rowKeyStr);
                     return next;
                   });
                 }}
               >
-                {collapsedFolders.has(pathKey) ? "▸" : "▾"}
+                {collapsedFolders.has(rowKeyStr) ? "▸" : "▾"}
               </span>
             ) : null}
             {item.type === "folder" ? (
@@ -616,13 +999,13 @@ export function SettingsApp() {
             ) : null}
             {item.type === "separator" ? <span className="settings__tree-sep-label">{label}</span> : label}
           </button>
-          {item.type === "folder" && !collapsedFolders.has(pathKey) ? renderTree(item.items, path, depth + 1) : null}
+          {item.type === "folder" && !collapsedFolders.has(rowKeyStr) ? renderTree(item.items, path, depth + 1) : null}
         </div>
       );
     });
 
   return (
-    <div className="settings">
+    <div className="settings" onContextMenu={(e) => e.preventDefault()}>
       <aside className="settings__sidebar">
         <div className="settings__brand">Snipcast</div>
         <nav className="settings__nav">
@@ -744,53 +1127,67 @@ export function SettingsApp() {
         {section === "templates" ? (
           <div className="settings__panel settings__panel--user-templates">
             <div className="settings__templates-toolbar settings__templates-toolbar--groups">
-              <button type="button" className="settings__ghost" title="Создать новую группу" onClick={() => openGroupModal("create")}>
-                ⊕ Новая группа
-              </button>
-              <button
-                type="button"
-                className="settings__ghost"
-                title="Добавить новую группу из JSON (редактируемая копия)"
-                onClick={() => void importEditableTemplateFromFile()}
-              >
-                ⏬ Импорт группы
-              </button>
-              <button type="button" className="settings__ghost" title="Импортировать мастер группу из файла" onClick={() => openGroupModal("master")}>
-                ⭐︎ Мастер группа
-              </button>
-              <div className="settings__group-tags">
-                {store?.groups.map((g) => (
-                  <button
-                    key={g.id}
-                    type="button"
-                    className={`settings__group-tag${selectedGroupId === g.id ? " is-active" : ""}`}
-                    style={{ "--tag-color": g.color } as React.CSSProperties}
-                    onClick={() => setSelectedGroup(g.id)}
-                  >
-                    {g.title}
-                    {g.isMaster ? " •M" : ""}
-                  </button>
-                ))}
+              <div className="settings__templates-toolbar-row">
+                <button type="button" className="settings__ghost" title="Создать новую группу" onClick={() => openGroupModal("create")}>
+                  ⊕ Новая группа
+                </button>
+                <button
+                  type="button"
+                  className="settings__ghost"
+                  title="Добавить новую группу из JSON (редактируемая копия)"
+                  onClick={() => void importEditableTemplateFromFile()}
+                >
+                  ⏬ Импорт группы
+                </button>
+                <button
+                  type="button"
+                  className="settings__ghost"
+                  title="Сохранить выбранную группу в JSON (не мастер)"
+                  disabled={!selectedGroupId || !!selectedGroup?.isMaster}
+                  onClick={() => void exportSelectedGroupToFile()}
+                >
+                  ⏫ Экспорт группы
+                </button>
+                <button type="button" className="settings__ghost" title="Импортировать мастер группу из файла" onClick={() => openGroupModal("master")}>
+                  ⭐︎ Мастер группа
+                </button>
+                <button type="button" className="settings__ghost" title="Удалить выбранную группу" disabled={!selectedGroupId} onClick={() => void onDeleteGroup()}>
+                  ❌
+                </button>
+                <button
+                  type="button"
+                  className="settings__ghost"
+                  title="Сменить цвет выбранной группы"
+                  disabled={!selectedGroupId}
+                  onClick={() => colorInputRef.current?.click()}
+                >
+                  🎨
+                </button>
+                <input
+                  ref={colorInputRef}
+                  type="color"
+                  className="settings__hidden-color"
+                  value={selectedGroup?.color ?? "#5164f2"}
+                  onChange={(e) => void updateSelectedGroup({ color: e.target.value })}
+                />
               </div>
-              <button type="button" className="settings__ghost" title="Удалить выбранную группу" disabled={!selectedGroupId} onClick={() => void onDeleteGroup()}>
-                ❌
-              </button>
-              <button
-                type="button"
-                className="settings__ghost"
-                title="Сменить цвет выбранной группы"
-                disabled={!selectedGroupId}
-                onClick={() => colorInputRef.current?.click()}
-              >
-                🎨
-              </button>
-              <input
-                ref={colorInputRef}
-                type="color"
-                className="settings__hidden-color"
-                value={selectedGroup?.color ?? "#5164f2"}
-                onChange={(e) => void updateSelectedGroup({ color: e.target.value })}
-              />
+              <div className="settings__group-tags-row">
+                <span className="settings__group-tags-label">Группы:</span>
+                <div className="settings__group-tags">
+                  {store?.groups.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      className={`settings__group-tag${selectedGroupId === g.id ? " is-active" : ""}`}
+                      style={{ "--tag-color": g.color } as React.CSSProperties}
+                      onClick={() => setSelectedGroup(g.id)}
+                    >
+                      {g.title}
+                      {g.isMaster ? " •M" : ""}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="settings__templates-toolbar">
@@ -809,7 +1206,13 @@ export function SettingsApp() {
               <button type="button" className="settings__ghost" title="Переместить вниз" disabled={!canMoveDown} onClick={() => void onMove(1)}>
                 ⬇️
               </button>
-              <button type="button" className="settings__ghost" title="Удалить выбранный элемент" disabled={!selectedPath || selectedGroup?.isMaster} onClick={() => void onDeleteNode()}>
+              <button
+                type="button"
+                className="settings__ghost"
+                title="Удалить выбранные (Del, Ctrl+клик для нескольких)"
+                disabled={selectedPathKeysArr.length === 0 || selectedGroup?.isMaster}
+                onClick={() => void onDeleteNode()}
+              >
                 ❌
               </button>
             </div>
@@ -858,18 +1261,40 @@ export function SettingsApp() {
                     />
                     <div className="settings__templates-hint">
                       <p>
-                        <code>{"{...}"}</code> — вставляет переменную из настроек.
+                        <code className="settings__hint-code">{"{...}"}</code> — вставляет переменную из настроек.
                       </p>
                       <p>
-                        <code>[...]</code> — вписывание своего текста, перед вставкой.
+                        <code className="settings__hint-code">[...]</code> — вписывание своего текста, перед вставкой.
                       </p>
                     </div>
                     {selectedGroup?.isMaster ? (
                       <p className="settings__templates-placeholder">Мастер группа: редактирование отключено.</p>
                     ) : null}
                   </>
+                ) : selectedNode?.type === "folder" ? (
+                  <>
+                    <label className="settings__field-label" htmlFor="folder-title">
+                      Название подпункта
+                    </label>
+                    <input
+                      id="folder-title"
+                      type="text"
+                      className="settings__templates-title-input"
+                      value={editorTitle}
+                      onChange={(e) => setEditorTitle(e.target.value)}
+                      spellCheck={false}
+                      autoComplete="off"
+                      disabled={!!selectedGroup?.isMaster}
+                    />
+                    <p className="settings__templates-placeholder settings__templates-folder-hint">
+                      Вложенные шаблоны отображаются внутри этой папки в палитре.
+                    </p>
+                    {selectedGroup?.isMaster ? (
+                      <p className="settings__templates-placeholder">Мастер группа: редактирование отключено.</p>
+                    ) : null}
+                  </>
                 ) : (
-                  <p className="settings__templates-placeholder">Выберите шаблон в списке слева.</p>
+                  <p className="settings__templates-placeholder">Выберите шаблон или подпункт в списке слева.</p>
                 )}
               </div>
             </div>
@@ -923,7 +1348,7 @@ export function SettingsApp() {
 
         {section === "update" ? (
           <div className="settings__panel settings__panel--about">
-            <img className="settings__logo" src="/app-icon.png" alt="" width={96} height={96} />
+            <img className="settings__logo" src={SNIPCAST_LOGO_SRC} alt="" width={96} height={96} />
             <h2 className="settings__appname">Snipcast</h2>
             <p className="settings__dev">dev by Maxat32, maxat322@gmail.com</p>
             <p className="settings__version">Версия {version || "…"}</p>

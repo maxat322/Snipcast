@@ -668,6 +668,24 @@ pub fn import_template_group_from_file(path: &str) -> Result<TemplateGroup, Stri
     Ok(parsed)
 }
 
+pub fn export_template_group_to_file(group_id: &str, path: &str) -> Result<(), String> {
+    let store = load_template_store()?;
+    let group = store
+        .groups
+        .iter()
+        .find(|g| g.id == group_id)
+        .ok_or_else(|| "Группа не найдена".to_string())?;
+    if group.is_master {
+        return Err("Нельзя экспортировать мастер-группу".to_string());
+    }
+    let mut export_group = group.clone();
+    export_group.is_master = false;
+    export_group.master_source_path = None;
+    let json = serde_json::to_string_pretty(&export_group).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 fn preview_from_body(body: &str) -> String {
     let line = body.lines().next().unwrap_or("").trim();
     const MAX: usize = 120;
