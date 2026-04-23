@@ -2,7 +2,8 @@
 
 Кросс-платформенное приложение для вставки текстовых шаблонов (macOS и Windows). Поддерживает различные группы шаблонов, возможность использовать переменные в тексте и редактируемые части сообщений перед отправкой.
 
-<img width="794" height="454" alt="image" src="https://github.com/user-attachments/assets/7a16fdd6-e2b0-41d2-a32d-72126b8dc5c7" />
+<img width="1366" height="667" alt="image" src="https://github.com/user-attachments/assets/c1b474bb-53e7-41bc-924a-d76a4c194d9f" />
+
 
 
 ## Требования
