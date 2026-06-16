@@ -1,5 +1,8 @@
 mod data;
+mod paste_insert;
 mod paste_target;
+mod rich_clipboard;
+mod template_files;
 
 #[cfg(target_os = "macos")]
 mod macos_window;
@@ -48,7 +51,7 @@ fn macos_round_corners_on_window_resize(window: &tauri::Window) {
 }
 
 /// Обновить цель вставки (macOS: с запасным PID; Windows: HWND переднего окна).
-fn refresh_paste_target(app: &tauri::AppHandle) {
+pub(crate) fn refresh_paste_target(app: &tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     {
         let lf = app.state::<Mutex<Option<i32>>>();
@@ -58,10 +61,7 @@ fn refresh_paste_target(app: &tauri::AppHandle) {
     #[cfg(target_os = "windows")]
     {
         if let Ok(mut g) = app.state::<Mutex<PasteTarget>>().lock() {
-            let captured = paste_target::capture_target_windows();
-            if captured.win_hwnd.is_some() {
-                *g = captured;
-            }
+            paste_target::sync_windows_paste_target(&mut g);
         }
     }
 }
@@ -78,7 +78,7 @@ fn show_palette(app: &tauri::AppHandle) {
     }
 }
 
-fn hide_palette(app: &tauri::AppHandle) {
+pub(crate) fn hide_palette(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = w.hide();
     }
@@ -106,36 +106,6 @@ fn apply_palette_hotkey(app: &tauri::AppHandle, previous: Option<&str>, next: &s
 #[tauri::command]
 fn palette_hide(app: tauri::AppHandle) {
     hide_palette(&app);
-}
-
-#[tauri::command]
-fn paste_template(
-    app: tauri::AppHandle,
-    target: State<'_, Mutex<PasteTarget>>,
-    text: String,
-) -> Result<(), String> {
-    let text = text.trim().to_string();
-    if text.is_empty() {
-        return Ok(());
-    }
-
-    refresh_paste_target(&app);
-
-    arboard::Clipboard::new()
-        .map_err(|e| e.to_string())?
-        .set_text(text)
-        .map_err(|e| e.to_string())?;
-
-    hide_palette(&app);
-
-    let snap = target.lock().map_err(|e| e.to_string())?.clone();
-
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(280));
-        paste_target::paste_into_previous(&snap);
-    });
-
-    Ok(())
 }
 
 /// Чтение текста из буфера обмена ОС (WebView `navigator.clipboard` в палитре часто недоступен).
@@ -240,6 +210,7 @@ fn snipcast_export_template_group(group_id: String, path: String) -> Result<(), 
 
 #[tauri::command]
 fn snipcast_open_settings(app: tauri::AppHandle) -> Result<(), String> {
+    refresh_paste_target(&app);
     let w = app
         .get_webview_window(SETTINGS_WINDOW_LABEL)
         .ok_or_else(|| "окно настроек не найдено".to_string())?;
@@ -308,6 +279,7 @@ pub fn run() {
                     match event.id.as_ref() {
                         "show" => show_palette(app),
                         "settings" => {
+                            refresh_paste_target(app);
                             let _ = snipcast_open_settings(app.clone());
                         }
                         "quit" => app.exit(0),
@@ -335,7 +307,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             palette_hide,
-            paste_template,
+            paste_insert::paste_template,
+            paste_insert::paste_template_text_then_files,
             snipcast_clipboard_read_text,
             snipcast_get_paths,
             snipcast_get_config,
@@ -360,6 +333,8 @@ pub fn run() {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = window.hide();
+                } else if let tauri::WindowEvent::Focused(false) = event {
+                    refresh_paste_target(&window.app_handle());
                 }
                 return;
             }
@@ -375,6 +350,7 @@ pub fn run() {
                 macos_round_corners_on_window_resize(window);
             }
             if let tauri::WindowEvent::Focused(false) = event {
+                refresh_paste_target(&window.app_handle());
                 let app = window.app_handle().clone();
                 let label = MAIN_WINDOW_LABEL.to_string();
                 std::thread::spawn(move || {

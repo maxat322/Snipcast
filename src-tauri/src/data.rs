@@ -89,6 +89,7 @@ pub struct PathsDto {
     pub base_dir: String,
     pub config_path: String,
     pub variables_path: String,
+    pub files_dir: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -208,6 +209,8 @@ pub fn init_data_tree() -> Result<(), String> {
     if !manifest.exists() && !legacy.exists() {
         save_template_store(&default_template_store())?;
     }
+
+    let _ = crate::template_files::ensure_template_files_dir();
 
     Ok(())
 }
@@ -806,5 +809,8 @@ pub fn paths_dto(_config: &AppConfig) -> PathsDto {
         base_dir: snipcast_base_dir().to_string_lossy().into(),
         config_path: config_path().to_string_lossy().into(),
         variables_path: variables_path().to_string_lossy().into(),
+        files_dir: crate::template_files::template_files_dir()
+            .to_string_lossy()
+            .into(),
     }
 }

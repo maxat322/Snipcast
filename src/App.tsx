@@ -10,6 +10,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { applyBracketReplacements, extractOrderedBracketLabels } from "./bracketPlaceholders";
+import { extractFileLinkRefs, stripFileLinkPlaceholders } from "./fileLinkPlaceholders";
 import type { AppConfig, TemplateChild, TemplateRow } from "./types";
 import {
   applyPaletteListDensity,
@@ -91,6 +92,7 @@ type BracketPromptState = {
   baseText: string;
   labels: string[];
   values: Record<string, string>;
+  fileRefs: string[];
 };
 
 type VisibleRow =
@@ -581,11 +583,20 @@ function App() {
     void invoke("snipcast_open_settings");
   }, []);
 
-  const pastePlainText = useCallback(async (text: string) => {
-    const t = text.trim();
-    if (!t) return;
+  const pasteContent = useCallback(async (text: string, fileRefs: string[]) => {
+    const body = text.trim();
+    const refs = fileRefs.map((r) => r.trim()).filter(Boolean);
+    if (!body && refs.length === 0) return;
     try {
-      await invoke("paste_template", { text: t });
+      if (refs.length > 0) {
+        await invoke("paste_template_text_then_files", {
+          text: body,
+          fileRefs: refs,
+          delayMs: 100,
+        });
+      } else {
+        await invoke("paste_template", { text: body });
+      }
     } catch {
       /* см. README: macOS — доступ */
     }
@@ -594,16 +605,18 @@ function App() {
   const startInsert = useCallback(
     (raw: string) => {
       const afterVars = substituteVars(raw);
-      const labels = extractOrderedBracketLabels(afterVars);
+      const fileRefs = extractFileLinkRefs(afterVars);
+      const bodyText = stripFileLinkPlaceholders(afterVars);
+      const labels = extractOrderedBracketLabels(bodyText);
       if (labels.length === 0) {
-        void pastePlainText(afterVars);
+        void pasteContent(bodyText, fileRefs);
         return;
       }
       const values: Record<string, string> = {};
       for (const lab of labels) values[lab] = "";
-      setBracketPrompt({ baseText: afterVars, labels, values });
+      setBracketPrompt({ baseText: bodyText, labels, values, fileRefs });
     },
-    [substituteVars, pastePlainText],
+    [substituteVars, pasteContent],
   );
 
   const collectBracketValuesFromForm = useCallback((form: HTMLFormElement): Record<string, string> => {
@@ -641,7 +654,7 @@ function App() {
             values[activeLab] = clip;
             const merged = applyBracketReplacements(p.baseText, p.labels, values);
             setBracketPrompt(null);
-            await pastePlainText(merged);
+            await pasteContent(merged, p.fileRefs);
           } catch {
             /* буфер или вставка в целевое приложение */
           }
@@ -652,9 +665,9 @@ function App() {
       const values = collectBracketValuesFromForm(form);
       const merged = applyBracketReplacements(prev.baseText, prev.labels, values);
       setBracketPrompt(null);
-      void pastePlainText(merged);
+      void pasteContent(merged, prev.fileRefs);
     },
-    [pastePlainText, collectBracketValuesFromForm],
+    [pasteContent, collectBracketValuesFromForm],
   );
 
   useEffect(() => {
@@ -1261,7 +1274,7 @@ function App() {
                 if (!p) return;
                 const merged = applyBracketReplacements(p.baseText, p.labels, p.values);
                 setBracketPrompt(null);
-                void pastePlainText(merged);
+                void pasteContent(merged, p.fileRefs);
               }}
               onKeyDown={handleBracketFormKeyDown}
             >

@@ -35,6 +35,7 @@ export type PathsDto = {
   baseDir: string;
   configPath: string;
   variablesPath: string;
+  filesDir: string;
 };
 
 export type TemplateNode =

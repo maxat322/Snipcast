@@ -12,6 +12,9 @@ pub struct PasteTarget {
     pub macos_pid: Option<i32>,
     #[cfg(target_os = "windows")]
     pub win_hwnd: Option<isize>,
+    /// Последнее окно не-Snipcast (Windows), когда переднее было «чужим».
+    #[cfg(target_os = "windows")]
+    pub last_foreign_hwnd: Option<isize>,
 }
 
 /// macOS: если сейчас в фокусе не Snipcast — запоминаем PID; иначе берём последний сохранённый PID.
@@ -37,10 +40,13 @@ pub fn sync_macos_paste_target(last_foreign: &Mutex<Option<i32>>, target: &Mutex
 }
 
 #[cfg(target_os = "windows")]
-pub fn capture_target_windows() -> PasteTarget {
-    let mut t = PasteTarget::default();
-    t.win_hwnd = win::foreground_hwnd_if_other_process();
-    t
+pub fn sync_windows_paste_target(target: &mut PasteTarget) {
+    if let Some(hwnd) = win::foreground_hwnd_if_other_process() {
+        target.last_foreign_hwnd = Some(hwnd);
+        target.win_hwnd = Some(hwnd);
+    } else if let Some(hwnd) = target.last_foreign_hwnd {
+        target.win_hwnd = Some(hwnd);
+    }
 }
 
 pub fn paste_into_previous(target: &PasteTarget) {
@@ -63,8 +69,8 @@ pub fn paste_into_previous(target: &PasteTarget) {
     {
         let hwnd = target
             .win_hwnd
-            // Fallback: after hiding the palette, foreground usually returns
-            // to the previous app; use it if no snapshot hwnd is stored.
+            .or(target.last_foreign_hwnd)
+            // Fallback: after hiding our windows, foreground may already be the target.
             .or_else(win::foreground_hwnd_if_other_process);
         if let Some(hwnd) = hwnd {
             let _ = win::activate_and_paste_ctrl_v(hwnd);

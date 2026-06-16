@@ -1264,7 +1264,10 @@ export function SettingsApp() {
                         <code className="settings__hint-code">{"{...}"}</code> — вставляет переменную из настроек.
                       </p>
                       <p>
-                        <code className="settings__hint-code">[...]</code> — вписывание своего текста, перед вставкой.
+                        <code className="settings__hint-code">[...]</code> — вписывание своего текста перед вставкой.
+                      </p>
+                      <p>
+                        <code className="settings__hint-code">[&quot;...&quot;]</code> — ссылка на файл.
                       </p>
                     </div>
                     {selectedGroup?.isMaster ? (
