@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -146,6 +147,13 @@ fn default_template_store() -> TemplateStore {
 }
 
 pub fn snipcast_base_dir() -> PathBuf {
+    // Переопределение папки данных: нужно для тестов и удобно для портативного запуска.
+    if let Some(dir) = std::env::var_os("SNIPCAST_DATA_DIR") {
+        if !dir.is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
+
     #[cfg(windows)]
     {
         PathBuf::from(r"C:\Snipcast")
@@ -183,6 +191,117 @@ pub fn template_groups_dir() -> PathBuf {
 
 pub fn groups_manifest_path() -> PathBuf {
     template_groups_dir().join("groups.json")
+}
+
+pub fn backups_dir() -> PathBuf {
+    snipcast_base_dir().join("backups")
+}
+
+/// Сколько последних копий каждого файла держим в `backups/`.
+const BACKUP_KEEP: usize = 5;
+
+/// Атомарная запись файла.
+///
+/// Пишем во временный файл рядом, принудительно сбрасываем его на диск (`sync_all`)
+/// и только потом атомарно подменяем целевой файл. При обрыве питания или краше
+/// на месте остаётся либо прежний целый файл, либо новый целиком — но никогда
+/// не обрезанный и не забитый нулями.
+fn write_atomic(path: &Path, contents: &str) -> Result<(), String> {
+    let dir = path
+        .parent()
+        .ok_or_else(|| format!("нет родительской папки у {}", path.display()))?;
+    fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+
+    let file_name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "data".to_string());
+    let tmp = dir.join(format!(".{file_name}.tmp"));
+
+    {
+        let mut f = fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        f.write_all(contents.as_bytes()).map_err(|e| e.to_string())?;
+        f.sync_all().map_err(|e| e.to_string())?;
+    }
+
+    backup_existing(path);
+
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
+    Ok(())
+}
+
+/// Откладывает текущую версию файла в `backups/` перед перезаписью.
+/// Защищает от логической порчи (запись валидных, но неверных данных),
+/// поэтому ошибки здесь не критичны и не прерывают сохранение.
+fn backup_existing(path: &Path) {
+    if !path.exists() {
+        return;
+    }
+    let file_name = match path.file_name() {
+        Some(n) => n.to_string_lossy().into_owned(),
+        None => return,
+    };
+    let dir = backups_dir();
+    if fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if fs::copy(path, dir.join(format!("{file_name}.{stamp}.bak"))).is_ok() {
+        prune_backups(&dir, &file_name);
+    }
+}
+
+/// Оставляет только последние `BACKUP_KEEP` копий конкретного файла.
+fn prune_backups(dir: &Path, file_name: &str) {
+    let prefix = format!("{file_name}.");
+    let rd = match fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(_) => return,
+    };
+    let mut mine: Vec<(u64, PathBuf)> = rd
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            let name = p.file_name()?.to_string_lossy().into_owned();
+            let rest = name.strip_prefix(&prefix)?.strip_suffix(".bak")?;
+            Some((rest.parse::<u64>().unwrap_or(0), p))
+        })
+        .collect();
+    if mine.len() <= BACKUP_KEEP {
+        return;
+    }
+    mine.sort_by_key(|(stamp, _)| *stamp);
+    let excess = mine.len() - BACKUP_KEEP;
+    for (_, p) in mine.into_iter().take(excess) {
+        let _ = fs::remove_file(p);
+    }
+}
+
+/// Убирает файл в `backups/orphaned/` вместо безвозвратного удаления.
+/// Пользовательские данные не удаляем никогда — только переносим.
+fn quarantine_file(path: &Path) {
+    let file_name = match path.file_name() {
+        Some(n) => n.to_string_lossy().into_owned(),
+        None => return,
+    };
+    let dir = backups_dir().join("orphaned");
+    if fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let target = dir.join(format!("{file_name}.{stamp}"));
+    if fs::rename(path, &target).is_err() {
+        let _ = fs::copy(path, &target).map(|_| fs::remove_file(path));
+    }
 }
 
 pub fn init_data_tree() -> Result<(), String> {
@@ -226,7 +345,7 @@ pub fn load_config() -> Result<AppConfig, String> {
 
 pub fn save_config(cfg: &AppConfig) -> Result<(), String> {
     let s = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
-    fs::write(config_path(), s).map_err(|e| e.to_string())
+    write_atomic(&config_path(), &s)
 }
 
 pub fn load_variables_map() -> Result<serde_json::Map<String, serde_json::Value>, String> {
@@ -245,13 +364,72 @@ pub fn load_variables_map() -> Result<serde_json::Map<String, serde_json::Value>
 pub fn save_variables_map(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), String> {
     let v = serde_json::Value::Object(map.clone());
     let s = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
-    fs::write(variables_path(), s).map_err(|e| e.to_string())
+    write_atomic(&variables_path(), &s)
+}
+
+/// Пересобирает список групп, читая `templates/*.json` напрямую.
+///
+/// Каждый файл группы самодостаточен (внутри свои `id`/`title`/`color`/`items`),
+/// поэтому потеря манифеста не должна означать потерю библиотеки шаблонов.
+fn rebuild_store_from_group_dir() -> TemplateStore {
+    let dir = template_groups_dir();
+    let rd = match fs::read_dir(&dir) {
+        Ok(rd) => rd,
+        Err(_) => return default_template_store(),
+    };
+    let mut paths: Vec<PathBuf> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension().and_then(|x| x.to_str()) == Some("json")
+                && p.file_name().and_then(|n| n.to_str()) != Some("groups.json")
+        })
+        .collect();
+    paths.sort();
+
+    let mut groups: Vec<TemplateGroup> = Vec::new();
+    for p in paths {
+        match load_group_from_import_path(&p) {
+            Ok(mut g) => {
+                if g.id.trim().is_empty() {
+                    g.id = generated_id("group");
+                }
+                if g.color.trim().is_empty() {
+                    g.color = "#5164f2".to_string();
+                }
+                g.is_master = false;
+                g.master_source_path = None;
+                groups.push(g);
+            }
+            Err(e) => {
+                eprintln!("[snipcast] файл группы {} нечитаем: {e}", p.display());
+            }
+        }
+    }
+
+    TemplateStore { version: 1, groups }
 }
 
 pub fn load_template_store() -> Result<TemplateStore, String> {
     let manifest_path = groups_manifest_path();
     if manifest_path.exists() {
-        return load_template_store_from_group_files();
+        match load_template_store_from_group_files() {
+            Ok(store) => return Ok(store),
+            Err(e) => {
+                // Манифест повреждён (обрыв записи, нули после потери питания и т.п.).
+                // Восстанавливаем список групп из самих файлов групп.
+                eprintln!("[snipcast] манифест групп нечитаем ({e}), пересобираем из файлов групп");
+                let rebuilt = rebuild_store_from_group_dir();
+                if !rebuilt.groups.is_empty() {
+                    save_template_store(&rebuilt)?;
+                    return Ok(rebuilt);
+                }
+                // Ничего прочитать не удалось: возвращаем пустой список, но НИЧЕГО не пишем —
+                // иначе перезапись затрёт файлы, которые ещё можно восстановить вручную.
+                eprintln!("[snipcast] файлы групп тоже нечитаемы, данные на диске не трогаем");
+                return Ok(default_template_store());
+            }
+        }
     }
 
     // Миграция со старой схемы `templates.json` (единый файл).
@@ -387,10 +565,11 @@ pub fn save_template_store(store: &TemplateStore) -> Result<(), String> {
             items: g.items.as_slice(),
         };
         let s = serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?;
-        fs::write(template_groups_dir().join(&file), s).map_err(|e| e.to_string())?;
+        write_atomic(&template_groups_dir().join(&file), &s)?;
     }
 
-    // Удаляем json-файлы групп, которых больше нет в манифесте.
+    // Файлы групп, которых больше нет в манифесте, убираем в карантин, а не удаляем:
+    // если манифест окажется повреждён, данные всё ещё можно достать.
     if let Ok(rd) = fs::read_dir(template_groups_dir()) {
         for e in rd.flatten() {
             let p = e.path();
@@ -401,7 +580,7 @@ pub fn save_template_store(store: &TemplateStore) -> Result<(), String> {
             if keep_files.contains(&name) {
                 continue;
             }
-            let _ = fs::remove_file(p);
+            quarantine_file(&p);
         }
     }
 
@@ -410,12 +589,12 @@ pub fn save_template_store(store: &TemplateStore) -> Result<(), String> {
         groups: manifest_groups,
     };
     let manifest_s = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-    fs::write(groups_manifest_path(), manifest_s).map_err(|e| e.to_string())?;
+    write_atomic(&groups_manifest_path(), &manifest_s)?;
 
-    // Поддержка миграции: удаляем legacy файл после успешной записи новой схемы.
+    // Поддержка миграции: legacy файл убираем в карантин после успешной записи новой схемы.
     let legacy = templates_path();
     if legacy.exists() {
-        let _ = fs::remove_file(legacy);
+        quarantine_file(&legacy);
     }
 
     Ok(())
@@ -685,8 +864,7 @@ pub fn export_template_group_to_file(group_id: &str, path: &str) -> Result<(), S
     export_group.is_master = false;
     export_group.master_source_path = None;
     let json = serde_json::to_string_pretty(&export_group).map_err(|e| e.to_string())?;
-    fs::write(path, json).map_err(|e| e.to_string())?;
-    Ok(())
+    write_atomic(Path::new(path), &json)
 }
 
 fn preview_from_body(body: &str) -> String {
@@ -812,5 +990,98 @@ pub fn paths_dto(_config: &AppConfig) -> PathsDto {
         files_dir: crate::template_files::template_files_dir()
             .to_string_lossy()
             .into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Отдельная папка данных на каждый прогон, чтобы тест не трогал реальный `C:\Snipcast`.
+    fn setup_temp_data_dir(tag: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("snipcast-test-{tag}-{stamp}"));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("создать временную папку");
+        std::env::set_var("SNIPCAST_DATA_DIR", &dir);
+        dir
+    }
+
+    fn group_json(id: &str, title: &str, color: &str) -> String {
+        serde_json::json!({
+            "id": id,
+            "title": title,
+            "color": color,
+            "items": [
+                { "type": "template", "id": "t1", "title": "Шаблон", "content": "текст" }
+            ]
+        })
+        .to_string()
+    }
+
+    /// Все проверки в одном тесте: переменная окружения общая на процесс,
+    /// поэтому параллельные тесты мешали бы друг другу.
+    #[test]
+    fn data_layer_survives_corruption() {
+        // --- 1. Атомарная запись действительно кладёт содержимое на место ---
+        let dir = setup_temp_data_dir("atomic");
+        let target = dir.join("config.json");
+        write_atomic(&target, "{\"a\":1}").expect("атомарная запись");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "{\"a\":1}");
+        // временный файл после себя не оставляем
+        assert!(!dir.join(".config.json.tmp").exists(), "временный файл не удалён");
+
+        // --- 2. Перезапись делает резервную копию прежней версии ---
+        write_atomic(&target, "{\"a\":2}").expect("вторая запись");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "{\"a\":2}");
+        let backups: Vec<_> = fs::read_dir(backups_dir())
+            .expect("папка backups создана")
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with("config.json."))
+            .collect();
+        assert_eq!(backups.len(), 1, "должна остаться одна копия прежней версии");
+        assert_eq!(
+            fs::read_to_string(backups[0].path()).unwrap(),
+            "{\"a\":1}",
+            "в копии должно лежать прежнее содержимое"
+        );
+
+        // --- 3. Обнулённый манифест при целых группах: список восстанавливается ---
+        setup_temp_data_dir("heal");
+        let tdir = template_groups_dir();
+        fs::create_dir_all(&tdir).unwrap();
+        fs::write(tdir.join("Мои.json"), group_json("g-1", "Мои", "#5164f2")).unwrap();
+        fs::write(tdir.join("Промпты.json"), group_json("g-2", "Промпты", "#20cb2b")).unwrap();
+        // ровно та порча, что случилась у пользователя: файл нужной длины из нулей
+        fs::write(groups_manifest_path(), vec![0u8; 852]).unwrap();
+
+        let store = load_template_store().expect("загрузка не должна падать");
+        let mut titles: Vec<&str> = store.groups.iter().map(|g| g.title.as_str()).collect();
+        titles.sort();
+        assert_eq!(titles, vec!["Мои", "Промпты"], "обе группы должны восстановиться");
+
+        // манифест должен быть перезаписан рабочим
+        let manifest = fs::read_to_string(groups_manifest_path()).unwrap();
+        assert!(manifest.contains("Промпты"), "манифест пересобран: {manifest}");
+
+        // --- 4. Всё нечитаемо: возвращаем пустой список, но файлы НЕ трогаем ---
+        setup_temp_data_dir("nodestroy");
+        let tdir = template_groups_dir();
+        fs::create_dir_all(&tdir).unwrap();
+        fs::write(tdir.join("Выпуски.json"), vec![0u8; 40342]).unwrap();
+        fs::write(groups_manifest_path(), vec![0u8; 852]).unwrap();
+
+        let store = load_template_store().expect("загрузка не должна падать");
+        assert!(store.groups.is_empty(), "групп быть не должно");
+        assert_eq!(
+            fs::metadata(tdir.join("Выпуски.json")).unwrap().len(),
+            40342,
+            "битый файл должен остаться на месте для ручного восстановления"
+        );
+
+        std::env::remove_var("SNIPCAST_DATA_DIR");
     }
 }

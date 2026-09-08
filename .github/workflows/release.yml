@@ -1,0 +1,69 @@
+name: release
+
+# Выпуск версии: поднять version в package.json, src-tauri/Cargo.toml и
+# src-tauri/tauri.conf.json, затем `git tag v0.33.0 && git push --tags`.
+on:
+  push:
+    # Поддерживаем обе схемы: существующие теги вида `0.31.0` и вариант с префиксом `v`.
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Версия в Cargo.toml — это то, с чем апдейтер сравнивает тег релиза.
+      # Если они разойдутся, установленная версия не поймёт, что вышла новая.
+      - name: Сверить тег с версией в Cargo.toml
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"(.+)"').Matches[0].Groups[1].Value
+          if ($tag -ne $cargo) {
+            Write-Error "Тег $tag не совпадает с версией в Cargo.toml ($cargo)"
+            exit 1
+          }
+          Write-Host "Версия совпадает: $cargo"
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
+      - name: Подготовить портативный exe и контрольную сумму
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-release | Out-Null
+          Copy-Item src-tauri/target/release/snipcast.exe dist-release/snipcast.exe
+          $hash = (Get-FileHash dist-release/snipcast.exe -Algorithm SHA256).Hash.ToLower()
+          # Формат sha256sum: апдейтер берёт первую последовательность из 64 hex-символов.
+          "$hash *snipcast.exe" | Out-File -Encoding ascii -NoNewline dist-release/snipcast.exe.sha256
+          Write-Host "SHA-256: $hash"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            dist-release/snipcast.exe
+            dist-release/snipcast.exe.sha256
