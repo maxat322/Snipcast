@@ -46,9 +46,23 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build
+      # Только через CLI Tauri: голый `cargo build --release` не вшивает фронтенд,
+      # и приложение на запуске уходит за интерфейсом на localhost:1420.
+      # --no-bundle: нужен портативный exe, установщик не собираем.
+      - run: npm run tauri build -- --no-bundle
 
-      - run: cargo build --release --manifest-path src-tauri/Cargo.toml
+      - name: Убедиться, что фронтенд вшит в exe
+        shell: pwsh
+        run: |
+          $asset = (Select-String -Path dist/index.html -Pattern 'assets/([^"]+\.js)').Matches[0].Groups[1].Value
+          Write-Host "Ищу в бинарнике ссылку на бандл: $asset"
+          $bytes = [System.IO.File]::ReadAllBytes("src-tauri/target/release/snipcast.exe")
+          $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+          if ($text -notlike "*$asset*") {
+            Write-Error "В exe нет вшитого фронтенда — сборка непригодна, релиз отменён"
+            exit 1
+          }
+          Write-Host "Фронтенд на месте"
 
       - name: Подготовить портативный exe и контрольную сумму
         shell: pwsh

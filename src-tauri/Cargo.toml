@@ -1,6 +1,6 @@
 [package]
 name = "snipcast"
-version = "0.33.0"
+version = "0.33.1"
 description = "Snipcast — текстовые шаблоны из трея"
 authors = ["you"]
 edition = "2021"
