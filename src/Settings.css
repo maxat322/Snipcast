@@ -108,6 +108,53 @@ body.settings-body {
   color: #ffb4b4;
 }
 
+/* В отличие от тоста не исчезает: сбой загрузки должен оставаться на виду,
+   иначе переключатели молча не работают и это выглядит как «настройки не сохраняются». */
+.settings__banner {
+  margin: 0 24px 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings__banner--error {
+  background: #2f1f24;
+  color: #ffb4b4;
+  border: 1px solid #5a2f38;
+}
+
+.settings__update {
+  width: 100%;
+  max-width: 420px;
+  margin: 4px 0 8px;
+}
+
+.settings__update-head {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.settings__update-notes {
+  max-height: 160px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  background: rgba(127, 127, 127, 0.12);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  text-align: left;
+}
+
+.settings__update-status {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
 .settings__option {
   display: flex;
   align-items: center;

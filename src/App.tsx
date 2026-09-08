@@ -441,6 +441,8 @@ function App() {
   /** Подсветка строки под курсором (светлее, чем клавиатурный фокус); не синхронизируется со стрелками. */
   const [hoverHighlightIndex, setHoverHighlightIndex] = useState<number | null>(null);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  /** Текст ошибки чтения шаблонов: лучше показать причину, чем пустой список без объяснений. */
+  const [loadError, setLoadError] = useState("");
   const [varMap, setVarMap] = useState<Record<string, string>>({});
   const [drillStack, setDrillStack] = useState<DrillFrame[]>([]);
   const [activeGroupId, setActiveGroupId] = useState("all");
@@ -539,18 +541,29 @@ function App() {
   }, []);
 
   const reloadData = useCallback(async (opts?: { resetGroupFilter?: boolean }) => {
-    try {
-      const [rows, vars, cfg] = await Promise.all([
-        invoke<TemplateRow[]>("snipcast_list_templates"),
-        invoke<Record<string, unknown>>("snipcast_get_variables"),
-        invoke<AppConfig>("snipcast_get_config"),
-      ]);
+    // Грузим независимо: раньше любой один сбой (например, нечитаемый файл шаблонов)
+    // ронял весь Promise.all, и палитра молча оставалась пустой — только console.error.
+    const [rowsRes, varsRes, cfgRes] = await Promise.allSettled([
+      invoke<TemplateRow[]>("snipcast_list_templates"),
+      invoke<Record<string, unknown>>("snipcast_get_variables"),
+      invoke<AppConfig>("snipcast_get_config"),
+    ]);
+
+    if (cfgRes.status === "fulfilled") {
+      const cfg = cfgRes.value;
       const theme = normalizeUiTheme(cfg.theme);
       const density = normalizePaletteListDensity(cfg.paletteListDensity);
       themeSettingRef.current = theme;
       applyUiThemeSetting(theme);
       applyPaletteListDensity(density);
+    } else {
+      console.error("[Snipcast] не удалось загрузить настройки:", cfgRes.reason);
+    }
+
+    if (rowsRes.status === "fulfilled") {
+      const rows = rowsRes.value;
       setTemplates(rows);
+      setLoadError("");
       if (opts?.resetGroupFilter) {
         setActiveGroupId("all");
       } else {
@@ -559,13 +572,19 @@ function App() {
           return rows.some((r) => r.groupId === prev) ? prev : "all";
         });
       }
+    } else {
+      console.error("[Snipcast] не удалось загрузить шаблоны:", rowsRes.reason);
+      setLoadError(String(rowsRes.reason));
+    }
+
+    if (varsRes.status === "fulfilled") {
       const m: Record<string, string> = {};
-      for (const [k, v] of Object.entries(vars)) {
+      for (const [k, v] of Object.entries(varsRes.value)) {
         m[k] = typeof v === "string" ? v : String(v);
       }
       setVarMap(m);
-    } catch (e) {
-      console.error("[Snipcast] не удалось загрузить шаблоны:", e);
+    } else {
+      console.error("[Snipcast] не удалось загрузить переменные:", varsRes.reason);
     }
   }, []);
 
@@ -1134,7 +1153,9 @@ function App() {
             </>
           )
         ) : browseLength === 0 ? (
-          <li className="palette__empty">Нет шаблонов</li>
+          <li className="palette__empty">
+            {loadError ? `Не удалось прочитать шаблоны: ${loadError}` : "Нет шаблонов"}
+          </li>
         ) : (
           filteredBrowse.map((v, index) => {
             const id = visibleRowId(v);

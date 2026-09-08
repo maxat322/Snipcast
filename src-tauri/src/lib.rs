@@ -3,6 +3,7 @@ mod paste_insert;
 mod paste_target;
 mod rich_clipboard;
 mod template_files;
+mod updater;
 
 #[cfg(target_os = "macos")]
 mod macos_window;
@@ -136,15 +137,28 @@ fn snipcast_save_config(
     incoming: data::AppConfig,
     skip_palette_hotkey_apply: Option<bool>,
 ) -> Result<(), String> {
-    Shortcut::from_str(incoming.palette_hotkey.trim()).map_err(|e| format!("Неверная комбинация клавиш: {e}"))?;
-
     let skip_hotkey = skip_palette_hotkey_apply.unwrap_or(false);
     let mut cfg = state.lock().map_err(|e| e.to_string())?;
     let prev_hotkey = cfg.palette_hotkey.clone();
+    let hotkey_changed = prev_hotkey.trim() != incoming.palette_hotkey.trim();
+
+    // Комбинацию проверяем только когда её реально меняли: неверный хоткей
+    // не должен мешать сохранить тему, автозапуск и остальные настройки.
+    let mut incoming = incoming;
+    if hotkey_changed {
+        if let Err(e) = Shortcut::from_str(incoming.palette_hotkey.trim()) {
+            // Оставляем прежнюю рабочую комбинацию, всё остальное сохраняем.
+            incoming.palette_hotkey = prev_hotkey;
+            *cfg = incoming;
+            data::save_config(&cfg)?;
+            return Err(format!("Неверная комбинация клавиш: {e}"));
+        }
+    }
+
     *cfg = incoming;
     data::save_config(&cfg)?;
 
-    if prev_hotkey.trim() != cfg.palette_hotkey.trim() && !skip_hotkey {
+    if hotkey_changed && !skip_hotkey {
         apply_palette_hotkey(&app, Some(&prev_hotkey), &cfg.palette_hotkey)?;
     }
 
@@ -225,6 +239,9 @@ fn snipcast_get_version() -> Result<String, String> {
 }
 
 pub fn run() {
+    // Файл прошлой версии занят, пока она работает, — убираем его уже после перезапуска.
+    updater::cleanup_after_update();
+
     if let Err(e) = data::init_data_tree() {
         eprintln!("[snipcast] init_data_tree: {e}");
     }
@@ -325,6 +342,9 @@ pub fn run() {
             snipcast_export_template_group,
             snipcast_open_settings,
             snipcast_get_version,
+            updater::snipcast_check_update,
+            updater::snipcast_install_update,
+            updater::snipcast_update_writable,
         ]);
 
     builder

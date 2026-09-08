@@ -31,6 +31,14 @@ export type AppConfig = {
   paletteListDensity: PaletteListDensity;
 };
 
+export type UpdateInfo = {
+  available: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  notes: string;
+  size: number;
+};
+
 export type PathsDto = {
   baseDir: string;
   configPath: string;

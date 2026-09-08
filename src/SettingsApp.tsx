@@ -8,11 +8,12 @@ import {
   type ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { keyboardEventToTauriHotkey, tauriHotkeyToDisplay } from "./hotkeyFormat";
-import type { AppConfig, TemplateGroup, TemplateNode, TemplateStore } from "./types";
+import type { AppConfig, TemplateGroup, TemplateNode, TemplateStore, UpdateInfo } from "./types";
 import {
   applyPaletteListDensity,
   applyUiThemeSetting,
@@ -23,7 +24,27 @@ import { SNIPCAST_LOGO_SRC } from "./branding";
 import "./theme-overrides.css";
 import "./Settings.css";
 
-const REPO_URL = "https://github.com/maxat32/Snipcast";
+const REPO_URL = "https://github.com/maxat322/Snipcast";
+
+type UpdateState = "idle" | "checking" | "available" | "uptodate" | "installing" | "error";
+
+/** Человеческое описание этапа обновления, приходящего из бэкенда. */
+function updateStageLabel(stage: string): string {
+  switch (stage) {
+    case "check":
+      return "Запрашиваю сведения о релизе…";
+    case "download":
+      return "Скачиваю…";
+    case "verify":
+      return "Проверяю контрольную сумму…";
+    case "install":
+      return "Устанавливаю…";
+    case "restart":
+      return "Перезапускаю…";
+    default:
+      return "Обновляю…";
+  }
+}
 const GROUP_COLORS = ["#5164f2", "#e8590c", "#20c997", "#be4bdb", "#339af0", "#fa5252"];
 
 type Section = "general" | "templates" | "variables" | "update";
@@ -312,6 +333,19 @@ export function SettingsApp() {
   const [errorToast, setErrorToast] = useState("");
   const [version, setVersion] = useState("");
   const [varRows, setVarRows] = useState<{ key: string; value: string }[]>([]);
+  /** До первой успешной загрузки автосохранение переменных не должно трогать диск. */
+  const varsLoadedRef = useRef(false);
+  /** Последнее, что реально записано в variables.json — чтобы не переписывать то же самое. */
+  const lastSavedVarsRef = useRef<string | null>(null);
+  /** Что именно не загрузилось: показываем постоянным баннером, а не исчезающим тостом. */
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
+
+  const [updateState, setUpdateState] = useState<UpdateState>("idle");
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateStage, setUpdateStage] = useState("");
+  const [updateError, setUpdateError] = useState("");
+  /** Портативную сборку могли положить туда, куда нельзя писать без администратора. */
+  const [updateWritable, setUpdateWritable] = useState(true);
 
   const [store, setStore] = useState<TemplateStore | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -355,35 +389,100 @@ export function SettingsApp() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    try {
-      const [c, v, vars, tmpl] = await Promise.all([
-        invoke<AppConfig>("snipcast_get_config"),
-        invoke<string>("snipcast_get_version"),
-        invoke<Record<string, unknown>>("snipcast_get_variables"),
-        invoke<TemplateStore>("snipcast_get_template_store"),
-      ]);
+    // Каждый кусок грузим независимо: одна битая часть (например, файл шаблонов)
+    // не должна оставлять окно настроек без конфига и молча ломать все переключатели.
+    const [cRes, vRes, varsRes, tmplRes] = await Promise.allSettled([
+      invoke<AppConfig>("snipcast_get_config"),
+      invoke<string>("snipcast_get_version"),
+      invoke<Record<string, unknown>>("snipcast_get_variables"),
+      invoke<TemplateStore>("snipcast_get_template_store"),
+    ]);
+
+    const problems: string[] = [];
+
+    if (cRes.status === "fulfilled") {
+      const c = cRes.value;
       setConfig(c);
       applyUiThemeSetting(normalizeUiTheme(c.theme));
       applyPaletteListDensity(normalizePaletteListDensity(c.paletteListDensity));
       setHotkeyDisplay(tauriHotkeyToDisplay(c.paletteHotkey));
-      setVersion(v);
-      const enabled = await isEnabled().catch(() => false);
-      setAutostartOn(enabled);
-      const rows = Object.entries(vars).map(([key, val]) => ({
+    } else {
+      problems.push(`настройки: ${String(cRes.reason)}`);
+    }
+
+    if (vRes.status === "fulfilled") setVersion(vRes.value);
+
+    if (varsRes.status === "fulfilled") {
+      const rows = Object.entries(varsRes.value).map(([key, val]) => ({
         key,
         value: typeof val === "string" ? val : JSON.stringify(val),
       }));
+      const loadedMap: Record<string, unknown> = {};
+      for (const r of rows) {
+        const k = r.key.trim();
+        if (k) loadedMap[k] = r.value;
+      }
+      lastSavedVarsRef.current = JSON.stringify(loadedMap);
       setVarRows(rows.length ? rows : [{ key: "", value: "" }]);
+      varsLoadedRef.current = true;
+    } else {
+      problems.push(`переменные: ${String(varsRes.reason)}`);
+    }
+
+    if (tmplRes.status === "fulfilled") {
+      const tmpl = tmplRes.value;
       setStore(tmpl);
       setSelectedGroupId((prev) => prev ?? tmpl.groups[0]?.id ?? null);
-    } catch (e) {
-      showError(e);
+    } else {
+      problems.push(`шаблоны: ${String(tmplRes.reason)}`);
     }
-  }, [showError]);
+
+    const enabled = await isEnabled().catch(() => false);
+    setAutostartOn(enabled);
+
+    setLoadErrors(problems);
+  }, []);
 
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listen<string>("snipcast://update-stage", (e) => setUpdateStage(e.payload)).then((f) => {
+      unlisten = f;
+    });
+    void invoke<boolean>("snipcast_update_writable")
+      .then(setUpdateWritable)
+      .catch(() => setUpdateWritable(true));
+    return () => unlisten?.();
+  }, []);
+
+  const checkUpdate = useCallback(async () => {
+    setUpdateError("");
+    setUpdateState("checking");
+    try {
+      const info = await invoke<UpdateInfo>("snipcast_check_update");
+      setUpdateInfo(info);
+      setUpdateState(info.available ? "available" : "uptodate");
+    } catch (e) {
+      setUpdateError(String(e));
+      setUpdateState("error");
+    }
+  }, []);
+
+  const installUpdate = useCallback(async () => {
+    setUpdateError("");
+    setUpdateStage("check");
+    setUpdateState("installing");
+    try {
+      await invoke("snipcast_install_update");
+      // Обычно сюда не возвращаемся: приложение перезапускается само.
+    } catch (e) {
+      setUpdateError(String(e));
+      setUpdateState("error");
+    }
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -397,14 +496,26 @@ export function SettingsApp() {
   }, [config?.theme]);
 
   useEffect(() => {
+    // Без этой проверки эффект срабатывал на монтировании окна с пустым varRows
+    // и, если загрузка не укладывалась в 500 мс, затирал variables.json пустым `{}`.
+    if (!varsLoadedRef.current) return;
+
+    const map: Record<string, unknown> = {};
+    for (const r of varRows) {
+      const k = r.key.trim();
+      if (!k) continue;
+      map[k] = r.value;
+    }
+    const serialized = JSON.stringify(map);
+    // Ничего не изменилось по сравнению с тем, что уже на диске — не пишем.
+    if (serialized === lastSavedVarsRef.current) return;
+
     const t = window.setTimeout(() => {
-      const map: Record<string, unknown> = {};
-      for (const r of varRows) {
-        const k = r.key.trim();
-        if (!k) continue;
-        map[k] = r.value;
-      }
-      void invoke("snipcast_save_variables", { map }).catch(showError);
+      void invoke("snipcast_save_variables", { map })
+        .then(() => {
+          lastSavedVarsRef.current = serialized;
+        })
+        .catch(showError);
     }, 500);
     return () => clearTimeout(t);
   }, [varRows, showError]);
@@ -465,6 +576,14 @@ export function SettingsApp() {
     if (!store || !selectedGroup || !primaryPath || selectedGroup.isMaster) return;
     const node = getNodeAtPath(selectedGroup.items, primaryPath);
     if (!node || (node.type !== "template" && node.type !== "folder")) return;
+
+    // Раньше `store` в зависимостях приводил к самоподдерживающемуся циклу:
+    // persistStore менял store -> эффект перезапускался -> ещё одна запись на диск
+    // без единого нажатия клавиши. Теперь пишем только при реальном отличии.
+    const titleSame = node.title === editorTitle;
+    const contentSame = node.type !== "template" || node.content === editorContent;
+    if (titleSame && contentSame) return;
+
     const t = window.setTimeout(() => {
       const next = cloneStore(store);
       const g = next.groups.find((x) => x.id === selectedGroup.id);
@@ -1043,6 +1162,13 @@ export function SettingsApp() {
       <main className="settings__main">
         {errorToast ? <div className="settings__toast settings__toast--error">{errorToast}</div> : null}
 
+        {loadErrors.length ? (
+          <div className="settings__banner settings__banner--error" role="alert">
+            <strong>Часть данных не загрузилась.</strong> Изменения в этих разделах не сохранятся,
+            пока причина не устранена: {loadErrors.join("; ")}
+          </div>
+        ) : null}
+
         {section === "general" ? (
           <div className="settings__panel">
             <div className="settings__group">
@@ -1355,15 +1481,63 @@ export function SettingsApp() {
             <h2 className="settings__appname">Snipcast</h2>
             <p className="settings__dev">dev by Maxat32, maxat322@gmail.com</p>
             <p className="settings__version">Версия {version || "…"}</p>
+
+            {!updateWritable ? (
+              <div className="settings__banner settings__banner--error" role="alert">
+                Папка с программой недоступна для записи, автоматическое обновление не сработает.
+                Перенесите Snipcast туда, куда можно писать без прав администратора.
+              </div>
+            ) : null}
+
+            {updateState === "available" && updateInfo ? (
+              <div className="settings__update">
+                <p className="settings__update-head">
+                  Доступна версия <strong>{updateInfo.latestVersion}</strong>, у вас{" "}
+                  {updateInfo.currentVersion}
+                </p>
+                {updateInfo.notes ? (
+                  <pre className="settings__update-notes">{updateInfo.notes}</pre>
+                ) : null}
+              </div>
+            ) : null}
+
+            {updateState === "uptodate" ? (
+              <p className="settings__update-status">У вас последняя версия</p>
+            ) : null}
+
+            {updateState === "installing" ? (
+              <p className="settings__update-status">{updateStageLabel(updateStage)}</p>
+            ) : null}
+
+            {updateError ? (
+              <div className="settings__banner settings__banner--error" role="alert">
+                {updateError}
+              </div>
+            ) : null}
+
             <button
               type="button"
               className="settings__primary"
+              disabled={updateState === "checking" || updateState === "installing"}
+              onClick={() =>
+                void (updateState === "available" ? installUpdate() : checkUpdate())
+              }
+            >
+              {updateState === "checking"
+                ? "Проверяю…"
+                : updateState === "installing"
+                  ? "Обновляю…"
+                  : updateState === "available"
+                    ? `Обновить до ${updateInfo?.latestVersion ?? ""}`
+                    : "Проверить обновления"}
+            </button>
+
+            <button
+              type="button"
+              className="settings__linkish"
               onClick={() => void openUrl(`${REPO_URL}/releases`)}
             >
-              Проверить обновления (GitHub)
-            </button>
-            <button type="button" className="settings__linkish" onClick={() => void openUrl(REPO_URL)}>
-              Репозиторий на GitHub
+              Все релизы на GitHub
             </button>
           </div>
         ) : null}
