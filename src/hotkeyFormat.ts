@@ -68,6 +68,12 @@ const MODIFIER_ONLY_CODES = new Set([
   "MetaRight",
 ]);
 
+function isPrintScreen(e: KeyboardEvent): boolean {
+  // Windows/WebView2 can deliver only keyup with an empty physical code.
+  // keyCode 44 is VK_SNAPSHOT, retained for runtimes with an unidentified key.
+  return e.code === "PrintScreen" || e.key === "PrintScreen" || e.keyCode === 44;
+}
+
 /**
  * Собирает строку вида CommandOrControl+Shift+Backslash для Rust.
  * Использует e.code (физическая клавиша), поэтому работает на русской раскладке.
@@ -76,7 +82,7 @@ export function keyboardEventToTauriHotkey(e: KeyboardEvent): string | null {
   if (e.repeat) return null;
   if (MODIFIER_ONLY_CODES.has(e.code)) return null;
 
-  const main = codeToMainKey(e.code);
+  const main = isPrintScreen(e) ? "PrintScreen" : codeToMainKey(e.code);
   if (!main) return null;
 
   const parts: string[] = [];
@@ -86,6 +92,28 @@ export function keyboardEventToTauriHotkey(e: KeyboardEvent): string | null {
   parts.push(main);
 
   return parts.join("+");
+}
+
+/** One recording session, shared by keydown/keyup and reset when focus changes. */
+export function createHotkeyRecorder() {
+  let printScreenRecordedOnDown = false;
+  return {
+    reset() {
+      printScreenRecordedOnDown = false;
+    },
+    record(e: KeyboardEvent): string | null {
+      if (e.type === "keyup") {
+        if (!isPrintScreen(e)) return null;
+        const alreadyRecorded = printScreenRecordedOnDown;
+        printScreenRecordedOnDown = false;
+        return alreadyRecorded ? null : keyboardEventToTauriHotkey(e);
+      }
+      if (e.type !== "keydown") return null;
+      const hotkey = keyboardEventToTauriHotkey(e);
+      if (hotkey && isPrintScreen(e)) printScreenRecordedOnDown = true;
+      return hotkey;
+    },
+  };
 }
 
 /** Отображение в поле настроек: Ctrl+Shift+\ и т.п. */

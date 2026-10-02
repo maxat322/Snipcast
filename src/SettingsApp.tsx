@@ -12,7 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { keyboardEventToTauriHotkey, tauriHotkeyToDisplay } from "./hotkeyFormat";
+import { createHotkeyRecorder, tauriHotkeyToDisplay } from "./hotkeyFormat";
 import type {
   AppConfig,
   QuickLocation,
@@ -495,6 +495,7 @@ export function SettingsApp() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const configRef = useRef<AppConfig | null>(null);
   configRef.current = config;
+  const hotkeyRecorder = useMemo(createHotkeyRecorder, []);
 
   const [autostartOn, setAutostartOn] = useState(true);
   const [hotkeyDisplay, setHotkeyDisplay] = useState("");
@@ -1008,20 +1009,22 @@ export function SettingsApp() {
   };
 
   const onHotkeyFocus = () => {
+    hotkeyRecorder.reset();
     void invoke("snipcast_palette_hotkey_pause").catch(() => {});
   };
 
   const onHotkeyBlur = () => {
+    hotkeyRecorder.reset();
     void invoke("snipcast_palette_hotkey_resume").catch(showError);
   };
 
-  const onHotkeyKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const onHotkeyKeyEvent = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     e.preventDefault();
     if (e.code === "Escape") {
       e.currentTarget.blur();
       return;
     }
-    const tauri = keyboardEventToTauriHotkey(e.nativeEvent);
+    const tauri = hotkeyRecorder.record(e.nativeEvent);
     if (!tauri) return;
     const base = configRef.current;
     if (!base) return;
@@ -1036,22 +1039,24 @@ export function SettingsApp() {
   };
 
   const onScreenshotHotkeyFocus = () => {
+    hotkeyRecorder.reset();
     setScreenshotHotkeyCapturing(true);
     void invoke("snipcast_screenshot_hotkey_pause").catch(() => {});
   };
 
   const onScreenshotHotkeyBlur = () => {
+    hotkeyRecorder.reset();
     setScreenshotHotkeyCapturing(false);
     void invoke("snipcast_screenshot_hotkey_resume").catch(showError);
   };
 
-  const onScreenshotHotkeyKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const onScreenshotHotkeyKeyEvent = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     e.preventDefault();
     if (e.code === "Escape") {
       e.currentTarget.blur();
       return;
     }
-    const tauri = keyboardEventToTauriHotkey(e.nativeEvent);
+    const tauri = hotkeyRecorder.record(e.nativeEvent);
     if (!tauri) return;
     const base = configRef.current;
     if (!base) return;
@@ -1181,12 +1186,14 @@ export function SettingsApp() {
   // (snipcast_preset_hotkeys_pause), применяются обратно по blur (resume).
 
   const onPresetHotkeyFocus = (idx: number) => {
+    hotkeyRecorder.reset();
     setPresetHotkeyCapturing(idx);
     presetCapturingRef.current = true;
     void invoke("snipcast_preset_hotkeys_pause").catch(() => {});
   };
 
   const onPresetHotkeyBlur = () => {
+    hotkeyRecorder.reset();
     setPresetHotkeyCapturing(null);
     presetCapturingRef.current = false;
     void invoke("snipcast_preset_hotkeys_resume").catch(showError);
@@ -1205,13 +1212,13 @@ export function SettingsApp() {
     }
   };
 
-  const onPresetHotkeyKeyDown = async (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+  const onPresetHotkeyKeyEvent = async (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     e.preventDefault();
     if (e.code === "Escape") {
       e.currentTarget.blur();
       return;
     }
-    const tauri = keyboardEventToTauriHotkey(e.nativeEvent);
+    const tauri = hotkeyRecorder.record(e.nativeEvent);
     if (!tauri) return;
     const nextPresets = presetsDraft.map((p, j) => (j === idx ? { ...p, hotkey: tauri } : p));
     setPresetsDraft(nextPresets);
@@ -1887,7 +1894,8 @@ export function SettingsApp() {
                   value={hotkeyDisplay}
                   onFocus={onHotkeyFocus}
                   onBlur={onHotkeyBlur}
-                  onKeyDown={(e) => void onHotkeyKeyDown(e)}
+                  onKeyDown={(e) => void onHotkeyKeyEvent(e)}
+                  onKeyUp={(e) => void onHotkeyKeyEvent(e)}
                   placeholder={
                     hotkeyDisplay ? "" : "Не назначен — открывайте из трея"
                   }
@@ -1913,7 +1921,8 @@ export function SettingsApp() {
                   value={screenshotHotkeyDisplay}
                   onFocus={onScreenshotHotkeyFocus}
                   onBlur={onScreenshotHotkeyBlur}
-                  onKeyDown={(e) => void onScreenshotHotkeyKeyDown(e)}
+                  onKeyDown={(e) => void onScreenshotHotkeyKeyEvent(e)}
+                  onKeyUp={(e) => void onScreenshotHotkeyKeyEvent(e)}
                   placeholder={
                     screenshotHotkeyCapturing
                       ? "Нажмите сочетание…"
@@ -2211,7 +2220,8 @@ export function SettingsApp() {
                             value={tauriHotkeyToDisplay(p.hotkey)}
                             onFocus={() => onPresetHotkeyFocus(i)}
                             onBlur={onPresetHotkeyBlur}
-                            onKeyDown={(e) => void onPresetHotkeyKeyDown(i, e)}
+                            onKeyDown={(e) => void onPresetHotkeyKeyEvent(i, e)}
+                            onKeyUp={(e) => void onPresetHotkeyKeyEvent(i, e)}
                             placeholder={
                               presetHotkeyCapturing === i
                                 ? "Нажмите сочетание…"
