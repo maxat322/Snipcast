@@ -1,0 +1,571 @@
+/* Окно чата ИИ-агента (label "aiagent", ~420x560).
+   Тёмная тема — по умолчанию, токены в духе Settings.css:
+   фон #1b1b1f / панели #121214 / рамка #3a3a44 / текст #e8e8ec / акцент #5164f2.
+   Светлая — через тот же data-app-theme, что использует всё приложение. */
+
+html.aiagent-root,
+html.aiagent-root body,
+body.aiagent-body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #1b1b1f;
+  /* Скругление как у палитры */
+  border-radius: 12px;
+  clip-path: inset(0 round 12px);
+}
+
+.aiagent {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  background: #1b1b1f;
+  color: #e8e8ec;
+  border-radius: 12px;
+  clip-path: inset(0 round 12px);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 14px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.aiagent input,
+.aiagent textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Шапка */
+
+.aiagent__header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #141418;
+  border-bottom: 1px solid #2a2a32;
+}
+
+.aiagent__heading {
+  /* Строго по центру шапки — между логотипом и кнопкой закрытия. */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 60%;
+}
+
+.aiagent__logo {
+  height: 40px;
+  width: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.aiagent__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f4f4f8;
+}
+
+.aiagent__model {
+  font-size: 12px;
+  color: #8b8b98;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aiagent__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.aiagent__close {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: #c4c4ce;
+  cursor: pointer;
+}
+
+.aiagent__close:hover {
+  background: #3b3b46;
+  color: #fff;
+}
+
+/* Предупреждение про ключ */
+
+.aiagent__warn {
+  padding: 8px 14px;
+  background: rgba(241, 191, 102, 0.12);
+  color: #f1bf66;
+  font-size: 12px;
+  line-height: 1.4;
+  border-bottom: 1px solid rgba(241, 191, 102, 0.25);
+}
+
+/* Лента */
+
+.aiagent__feed {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aiagent__empty {
+  margin: auto;
+  text-align: center;
+  color: #8b8b98;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 0 16px;
+}
+
+.aiagent__empty p {
+  margin: 0;
+}
+
+.aiagent__msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 86%;
+}
+
+.aiagent__msg--user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.aiagent__msg--assistant {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+/* Миниатюры над текстом пузыря (и чипы прикрепления) */
+
+.aiagent__thumbs,
+.aiagent__pending {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.aiagent__thumbs {
+  padding: 6px 6px 0;
+  margin-bottom: 6px;
+}
+
+.aiagent__thumb {
+  max-width: 120px;
+  max-height: 80px;
+  border-radius: 12px;
+  border: 1px solid #3a3a44;
+  object-fit: contain;
+  background: #121214;
+}
+
+.aiagent__thumb--stub {
+  width: 48px;
+  height: 32px;
+}
+
+/* Пузыри */
+
+.aiagent__bubble {
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.aiagent__msg--user .aiagent__bubble {
+  background: #3b5bdb;
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.aiagent__msg--assistant .aiagent__bubble {
+  background: #23232c;
+  color: #e8e8ec;
+  border-bottom-left-radius: 4px;
+}
+
+.aiagent__msg.is-error .aiagent__bubble {
+  border: 1px solid #c92a2a;
+}
+
+.aiagent__text,
+.aiagent__para {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* Кнопка копирования под сообщением */
+
+.aiagent__msg-actions {
+  display: flex;
+  margin-top: 4px;
+}
+
+.aiagent__msg--user .aiagent__msg-actions {
+  justify-content: flex-end;
+}
+
+.aiagent__copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #7c7c8a;
+  cursor: pointer;
+}
+
+.aiagent__copy:hover {
+  background: #2a2a32;
+  color: #d8d8e0;
+}
+
+.aiagent__error {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #ff8787;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Код в ответах */
+
+.aiagent__code {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #121214;
+  border: 1px solid #2a2a32;
+  overflow-x: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.aiagent__code code {
+  font-family: inherit;
+  white-space: pre;
+}
+
+.aiagent__inline-code {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(127, 127, 127, 0.18);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+/* Мигающий курсор стриминга */
+
+.aiagent__cursor {
+  display: inline-block;
+  color: #aeb0be;
+  animation: aiagent-blink 1s steps(1) infinite;
+}
+
+@keyframes aiagent-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Ввод */
+
+.aiagent__composer {
+  padding: 10px 12px 12px;
+  background: #141418;
+  border-top: 1px solid #2a2a32;
+}
+
+.aiagent__pending {
+  margin-bottom: 8px;
+  padding: 6px;
+  border: 1px dashed #3a3a44;
+  border-radius: 12px;
+  background: #121214;
+}
+
+.aiagent__input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.aiagent__input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid #3a3a44;
+  background: #121214;
+  color: #f4f4f8;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  /* Рост textarea — JS-ом (height: auto → scrollHeight), потолок — 5 строк */
+  max-height: calc(5 * 20px + 18px);
+  /* Скроллбар не показываем: прокрутка колёсиком, рамка окна и без него тесная */
+  scrollbar-width: none;
+}
+
+.aiagent__input::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.aiagent__input:focus {
+  outline: none;
+  border-color: #5164f2;
+}
+
+.aiagent__input::placeholder {
+  color: #6b6b78;
+}
+
+.aiagent__send {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 12px;
+  background: #5164f2;
+  color: #fff;
+  cursor: pointer;
+}
+
+.aiagent__send:hover:not(:disabled) {
+  background: #4c6ef5;
+}
+
+.aiagent__send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------------
+   Компактный режим (до первого ответа): окно — только поле ввода;
+   после отправки оно заменяется индикатором «Думаю…».
+   --------------------------------------------------------------------------- */
+
+.aiagent.is-compact .aiagent__composer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.aiagent__thinking {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #8b8b98;
+  font-size: 13px;
+}
+
+.aiagent__dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.aiagent__dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #8b8b98;
+  animation: aiagent-dot 1.1s infinite ease-in-out;
+}
+
+.aiagent__dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.aiagent__dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes aiagent-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* Появление элементов при развороте в полный чат */
+.aiagent__header,
+.aiagent__feed,
+.aiagent__pending,
+.aiagent__composer {
+  animation: aiagent-appear 0.28s ease;
+}
+
+@keyframes aiagent-appear {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Светлая тема (data-app-theme на <html>, как в SettingsApp/палитре)
+   --------------------------------------------------------------------------- */
+
+html[data-app-theme="light"].aiagent-root,
+html[data-app-theme="light"].aiagent-root body,
+html[data-app-theme="light"].aiagent-root body.aiagent-body {
+  background: #ececf0;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent {
+  background: #ececf0;
+  color: #1a1a22;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__header,
+html[data-app-theme="light"].aiagent-root .aiagent__composer {
+  background: #f4f4f8;
+  border-color: #d8d8e0;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__title {
+  color: #12121a;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__model {
+  color: #586477;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__warn {
+  background: rgba(232, 89, 12, 0.1);
+  color: #b35c00;
+  border-bottom-color: rgba(232, 89, 12, 0.25);
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__close {
+  color: #3a3a48;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__close:hover {
+  background: #d8d8e0;
+  color: #12121a;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__empty {
+  color: #586477;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__msg--assistant .aiagent__bubble {
+  background: #ffffff;
+  border: 1px solid #d8d8e0;
+  color: #1a1a22;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__msg.is-error .aiagent__bubble {
+  border-color: #c92a2a;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__copy {
+  color: #8b8b98;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__copy:hover {
+  background: #d8d8e0;
+  color: #3a3a48;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__error {
+  color: #c92a2a;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__code {
+  background: #f0f0f4;
+  border-color: #d8d8e0;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__inline-code {
+  background: rgba(127, 127, 127, 0.16);
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__cursor {
+  color: #586477;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__thumb {
+  border-color: #c8c8d4;
+  background: #ffffff;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__pending {
+  border-color: #c8c8d4;
+  background: #ffffff;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__input {
+  border-color: #c8c8d4;
+  background: #ffffff;
+  color: #12121a;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__input:focus {
+  border-color: #5164f2;
+}
+
+html[data-app-theme="light"].aiagent-root .aiagent__input::placeholder {
+  color: #8b8b98;
+}

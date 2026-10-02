@@ -1,7 +1,7 @@
 name: release
 
 # Выпуск версии: поднять version в package.json, src-tauri/Cargo.toml и
-# src-tauri/tauri.conf.json, затем `git tag v0.33.0 && git push --tags`.
+# src-tauri/tauri.conf.json, затем `git tag v0.34.0 && git push --tags`.
 on:
   push:
     # Поддерживаем обе схемы: существующие теги вида `0.31.0` и вариант с префиксом `v`.

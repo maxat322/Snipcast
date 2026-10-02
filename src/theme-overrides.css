@@ -280,6 +280,7 @@ html[data-app-theme="light"].settings-root .settings__option-label {
 }
 
 html[data-app-theme="light"].settings-root .settings__option input[type="text"],
+html[data-app-theme="light"].settings-root .settings__option input[type="password"],
 html[data-app-theme="light"].settings-root .settings__modal input[type="text"],
 html[data-app-theme="light"].settings-root .settings__templates-body,
 html[data-app-theme="light"].settings-root .settings__templates-title-input {

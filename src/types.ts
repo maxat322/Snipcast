@@ -24,11 +24,55 @@ export type TemplateRow = {
 export type UiThemeSetting = "light" | "dark" | "system";
 export type PaletteListDensity = "normal" | "compact";
 
+export type QuickLocation = { name: string; path: string };
+export type ScreenshotFormat = "png" | "jpeg";
+export type OcrQuality = "mobile" | "server";
+
+export type OcrEngine = "system" | "paddle";
+
+export type ScreenshotPresetAction = "save" | "ocr" | "pin";
+
+export type ScreenshotPreset = {
+  id: string;
+  title: string;
+  /** "" — хоткей не назначен (пресет доступен из трея и через API). */
+  hotkey: string;
+  /** "" — общая папка по умолчанию. */
+  dir: string;
+  /** "" — общий шаблон имени файла. */
+  fileTemplate: string;
+  action: ScreenshotPresetAction;
+  /** true — через выделение области, false — весь экран. */
+  select: boolean;
+};
+
 export type AppConfig = {
   paletteHotkey: string;
   autostart: boolean;
   theme: UiThemeSetting;
   paletteListDensity: PaletteListDensity;
+  screenshotHotkey: string;
+  screenshotFormat: ScreenshotFormat;
+  screenshotJpegQuality: number;
+  screenshotFileTemplate: string;
+  screenshotSaveDir: string;
+  screenshotQuickLocations: QuickLocation[];
+  screenshotOcrEngine: OcrEngine;
+  screenshotOcrLanguage: string;
+  screenshotOcrQuality: OcrQuality;
+  screenshotPresets: ScreenshotPreset[];
+  apiEnabled: boolean;
+  apiPort: number;
+  aiApiKey: string;
+  aiModel: string;
+};
+
+/** Одно сообщение чата ИИ-агента (история хранится на бэкене). */
+export type AiChatMessage = {
+  role: "user" | "assistant";
+  text: string;
+  /** Идентификаторы прикреплённых скриншотов (snipcast_ai_image по запросу). */
+  imageIds: number[];
 };
 
 export type UpdateInfo = {

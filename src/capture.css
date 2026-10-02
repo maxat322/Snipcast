@@ -1,0 +1,790 @@
+/* Оверлей скриншота (capture-N) и окно закрепа (pin-N).
+   Токены: тёмная панель #1b1b1f / рамка #3a3a44 / текст #e8e8ec / приглушенный #aeb0be;
+   светлая — #f8f9fc / #ccd3de / #2c3544 / #586477; акцент #5164f2. */
+
+/* Снимаем «палитровые» скругления index.html/App.css: окна снимков на весь монитор */
+html.capture-root,
+html.capture-root body,
+html.capture-root #root {
+  border-radius: 0;
+  clip-path: none;
+  background: transparent;
+}
+
+/* Закреп: тёмная подложка — при ресайзе/зуме вместо белых полей тёмный фон */
+html.pin-root,
+html.pin-root body,
+html.pin-root #root {
+  border-radius: 0;
+  clip-path: none;
+  background: #1b1b1f;
+}
+
+.capture {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: 0;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+
+.capture--presented {
+  opacity: 1;
+  transition: opacity 180ms ease-out;
+}
+
+.capture__shot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Демо-режим без Tauri */
+.capture__placeholder {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #2a2a35 0%, #17171d 55%, #23232e 100%);
+}
+
+/* Затемнение: 4 полосы вокруг выделения (35%) или весь экран (легкое) */
+.capture__dim {
+  position: absolute;
+  background: rgba(10, 10, 14, 0.35);
+  pointer-events: none;
+}
+
+.capture__dim--full {
+  inset: 0;
+  background: rgba(10, 10, 14, 0.18);
+}
+
+/* Fade only opacity: geometry must follow the pointer without interpolation. */
+.capture__dim--selection {
+  animation: capture-dim-in 160ms ease-out both;
+}
+
+.capture__selection-reveal {
+  position: absolute;
+  background: rgba(10, 10, 14, 0.18);
+  pointer-events: none;
+  animation: capture-selection-reveal 160ms ease-out both;
+}
+
+@keyframes capture-dim-in {
+  from { opacity: 0.5142857; }
+  to { opacity: 1; }
+}
+
+@keyframes capture-selection-reveal {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes capture-selection-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.capture__shapes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Рамка выделения */
+.capture__frame {
+  position: absolute;
+  border: 2px solid #5164f2;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+  animation: capture-selection-in 160ms ease-out both;
+}
+
+.capture__handle {
+  position: absolute;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 1.5px solid #5164f2;
+  box-sizing: border-box;
+}
+
+.capture__handle--nw {
+  left: -6px;
+  top: -6px;
+  cursor: nwse-resize;
+}
+
+.capture__handle--n {
+  left: calc(50% - 5px);
+  top: -6px;
+  cursor: ns-resize;
+}
+
+.capture__handle--ne {
+  right: -6px;
+  top: -6px;
+  cursor: nesw-resize;
+}
+
+.capture__handle--e {
+  right: -6px;
+  top: calc(50% - 5px);
+  cursor: ew-resize;
+}
+
+.capture__handle--se {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
+}
+
+.capture__handle--s {
+  left: calc(50% - 5px);
+  bottom: -6px;
+  cursor: ns-resize;
+}
+
+.capture__handle--sw {
+  left: -6px;
+  bottom: -6px;
+  cursor: nesw-resize;
+}
+
+.capture__handle--w {
+  left: -6px;
+  top: calc(50% - 5px);
+  cursor: ew-resize;
+}
+
+/* Чип размеров над левым верхним углом */
+.capture__dimchip {
+  position: absolute;
+  z-index: 3;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(20, 20, 26, 0.92);
+  border: 1px solid #3a3a44;
+  color: #e8e8ec;
+  font-size: 12px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  animation: capture-selection-in 160ms ease-out both;
+}
+
+/* Подсказки до выделения */
+.capture__hint {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  color: #f4f4f8;
+  font-size: 15px;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
+}
+
+.capture__hint--top {
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.capture__hint--esc {
+  top: 30px;
+  right: 26px;
+  color: #aeb0be;
+  font-size: 13px;
+}
+
+/* Чип активного пресета под верхней подсказкой (до выделения) */
+.capture__preset-chip {
+  position: absolute;
+  z-index: 2;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgba(81, 100, 242, 0.3);
+  border: 1px solid rgba(81, 100, 242, 0.7);
+  color: #cdd3fb;
+  font-size: 13px;
+  line-height: 1.4;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.75);
+  pointer-events: none;
+  max-width: 70vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Выбранная фигура: габарит + ключевые точки */
+.capture__shape-box {
+  position: absolute;
+  z-index: 2;
+  border: 1px dashed rgba(81, 100, 242, 0.9);
+  pointer-events: none;
+  animation: capture-selection-in 160ms ease-out both;
+}
+
+/* Ручка фигуры: понятный значок перемещения (стрелки в четыре стороны) */
+.capture__kp {
+  position: absolute;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 3l2.4 2.4M12 3 9.6 5.4M12 3v18m0 0 2.4-2.4M12 21l-2.4-2.4M3 12l2.4-2.4M3 12l2.4 2.4M3 12h18m0 0-2.4-2.4M21 12l-2.4 2.4' stroke='%235164f2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 12px 12px;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 1.5px solid #5164f2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+  cursor: move;
+  pointer-events: auto;
+  animation: capture-selection-in 160ms ease-out both;
+}
+
+/* Инлайн-редактор текста */
+/* Рамка будущего текстового фрейма при протяжке */
+.capture__text-frame {
+  position: absolute;
+  z-index: 3;
+  border: 1px dashed rgba(81, 100, 242, 0.9);
+  background: rgba(81, 100, 242, 0.06);
+  pointer-events: none;
+  animation: capture-selection-in 160ms ease-out both;
+}
+
+.capture__text-selection {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  animation: capture-selection-in 160ms ease-out both;
+}
+
+.capture__text-selection::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -1px;
+  border: 1px dashed rgba(81, 100, 242, 0.9);
+  pointer-events: none;
+}
+
+.capture__text-edit-wrap {
+  position: absolute;
+  z-index: 4;
+}
+.capture__text-edit-wrap .capture__text-selection { z-index: 1; }
+
+.capture__text-handle {
+  position: absolute;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #5164f2;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  touch-action: none;
+}
+.capture__text-handle::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+.capture__text-handle--nw { left: 0; top: 0; cursor: nwse-resize; }
+.capture__text-handle--n { left: 50%; top: 0; cursor: ns-resize; }
+.capture__text-handle--ne { left: 100%; top: 0; cursor: nesw-resize; }
+.capture__text-handle--e { left: 100%; top: 50%; cursor: ew-resize; }
+.capture__text-handle--se { left: 100%; top: 100%; cursor: nwse-resize; }
+.capture__text-handle--s { left: 50%; top: 100%; cursor: ns-resize; }
+.capture__text-handle--sw { left: 0; top: 100%; cursor: nesw-resize; }
+.capture__text-handle--w { left: 0; top: 50%; cursor: ew-resize; }
+
+@media (prefers-reduced-motion: reduce) {
+  .capture--presented { transition: none; }
+  .capture__dim--selection,
+  .capture__selection-reveal,
+  .capture__frame,
+  .capture__dimchip,
+  .capture__shape-box,
+  .capture__kp,
+  .capture__text-frame,
+  .capture__text-selection { animation: none; }
+  .capture__selection-reveal { opacity: 0; }
+}
+
+.capture__text-edit {
+  display: block;
+  box-sizing: content-box;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  font-weight: 400;
+  font-style: normal;
+  letter-spacing: normal;
+  font-kerning: auto;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 4;
+  direction: ltr;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ------------------------------------------------------------------ */
+/* Панель инструментов и попапы */
+/* ------------------------------------------------------------------ */
+
+.capture__ui {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.capture__ui > * {
+  pointer-events: auto;
+}
+
+.capture__toolbar {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: #1b1b1f;
+  border: 1px solid #3a3a44;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+.capture__btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 54px;
+  padding: 6px 8px 5px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #e8e8ec;
+  cursor: pointer;
+  font: inherit;
+}
+
+.capture__btn span {
+  font-size: 11px;
+  line-height: 1.2;
+  color: #aeb0be;
+}
+
+.capture__btn:hover:not(:disabled) {
+  background: rgba(81, 100, 242, 0.16);
+}
+
+.capture__btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Активный инструмент рисования — подкраска акцентом */
+.capture__btn.is-active {
+  background: rgba(81, 100, 242, 0.26);
+  color: #cdd3fb;
+}
+
+.capture__btn.is-active span {
+  color: #cdd3fb;
+}
+
+.capture__toolbar-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 8px 4px;
+  background: #3a3a44;
+}
+
+/* Опции инструмента (цвет, толщина) — под правым краем панели */
+.capture__opts {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #1b1b1f;
+  border: 1px solid #3a3a44;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+.capture__opts-title {
+  font-size: 12px;
+  color: #aeb0be;
+}
+
+.capture__opts-shapes {
+  display: flex;
+  gap: 6px;
+}
+
+.capture__shape-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #c9c9d4;
+  cursor: pointer;
+}
+
+.capture__shape-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.capture__shape-btn.is-active {
+  border-color: #5164f2;
+  background: rgba(81, 100, 242, 0.18);
+  color: #fff;
+}
+
+.capture__opts-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.capture__swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+}
+
+.capture__swatch.is-active {
+  outline: 2px solid #5164f2;
+  outline-offset: 2px;
+}
+
+.capture__opts-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #aeb0be;
+}
+
+.capture__opts-row input[type="range"] {
+  width: 110px;
+  accent-color: #5164f2;
+}
+
+.capture__opts-value {
+  min-width: 16px;
+  text-align: right;
+  color: #e8e8ec;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Меню быстрых мест (удержание «Сохранить») */
+.capture__quick {
+  position: absolute;
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: 12px;
+  background: #1b1b1f;
+  border: 1px solid #3a3a44;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+.capture__quick-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #e8e8ec;
+  font: inherit;
+  cursor: pointer;
+}
+
+.capture__quick-item.is-hover,
+.capture__quick-item:hover {
+  background: rgba(81, 100, 242, 0.28);
+}
+
+.capture__quick-item--disabled,
+.capture__quick-item--disabled:hover {
+  color: #aeb0be;
+  background: transparent;
+  cursor: default;
+}
+
+.capture__quick-name {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.capture__quick-path {
+  font-size: 11px;
+  line-height: 1.3;
+  color: #aeb0be;
+  word-break: break-all;
+}
+
+/* Тост */
+.capture__toast {
+  position: absolute;
+  left: 50%;
+  bottom: 36px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px 8px 8px;
+  border-radius: 12px;
+  background: #1b1b1f;
+  border: 1px solid #3a3a44;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  color: #e8e8ec;
+  font-size: 13px;
+  white-space: nowrap;
+  max-width: 80vw;
+  pointer-events: none;
+}
+
+.capture__toast-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #5164f2;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.capture__toast--error .capture__toast-icon {
+  background: #e5484d;
+}
+
+.capture__toast-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------------ */
+/* Светлая тема панелей (data-capture-theme="light"); затемнение остаётся тёмным */
+/* ------------------------------------------------------------------ */
+
+.capture[data-capture-theme="light"] .capture__toolbar,
+.capture[data-capture-theme="light"] .capture__opts,
+.capture[data-capture-theme="light"] .capture__quick,
+.capture[data-capture-theme="light"] .capture__toast {
+  background: #f8f9fc;
+  border-color: #ccd3de;
+  box-shadow: 0 10px 28px rgba(28, 39, 62, 0.18);
+  color: #2c3544;
+}
+
+.capture[data-capture-theme="light"] .capture__btn {
+  color: #2c3544;
+}
+
+.capture[data-capture-theme="light"] .capture__btn span {
+  color: #586477;
+}
+
+.capture[data-capture-theme="light"] .capture__btn:hover:not(:disabled) {
+  background: rgba(81, 100, 242, 0.12);
+}
+
+.capture[data-capture-theme="light"] .capture__btn.is-active {
+  background: rgba(81, 100, 242, 0.18);
+  color: #31409e;
+}
+
+.capture[data-capture-theme="light"] .capture__btn.is-active span {
+  color: #31409e;
+}
+
+.capture[data-capture-theme="light"] .capture__toolbar-sep {
+  background: #ccd3de;
+}
+
+.capture[data-capture-theme="light"] .capture__opts-title,
+.capture[data-capture-theme="light"] .capture__opts-row,
+.capture[data-capture-theme="light"] .capture__quick-path,
+.capture[data-capture-theme="light"] .capture__quick-item--disabled {
+  color: #586477;
+}
+
+.capture[data-capture-theme="light"] .capture__swatch {
+  border-color: rgba(44, 53, 68, 0.3);
+}
+
+.capture[data-capture-theme="light"] .capture__opts-value,
+.capture[data-capture-theme="light"] .capture__quick-item {
+  color: #2c3544;
+}
+
+/* ------------------------------------------------------------------ */
+/* Окно закрепа */
+/* ------------------------------------------------------------------ */
+
+.pin {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  cursor: move;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+
+.pin__shot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Демо-режим без Tauri */
+.pin__demo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #2a2a35 0%, #17171d 55%, #23232e 100%);
+  color: #aeb0be;
+  font-size: 15px;
+}
+
+.pin__stub {
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    45deg,
+    #26262e,
+    #26262e 12px,
+    #2e2e38 12px,
+    #2e2e38 24px
+  );
+}
+
+/* Курсоры растягивания у краёв и углов */
+.pin--edge-n,
+.pin--edge-s {
+  cursor: ns-resize;
+}
+
+.pin--edge-e,
+.pin--edge-w {
+  cursor: ew-resize;
+}
+
+.pin--edge-ne,
+.pin--edge-sw {
+  cursor: nesw-resize;
+}
+
+.pin--edge-nw,
+.pin--edge-se {
+  cursor: nwse-resize;
+}
+
+/* Окно контекстного меню закрепа (отдельное, поверх всего) */
+.pinmenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100vw;
+  height: 100vh;
+  padding: 5px;
+  box-sizing: border-box;
+  background: #1b1b1f;
+  color: #e8e8ec;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pinmenu__item {
+  display: block;
+  width: 100%;
+  padding: 8px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #e8e8ec;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pinmenu__item:hover {
+  background: rgba(81, 100, 242, 0.16);
+}

@@ -54,6 +54,9 @@ body.settings-body {
 }
 
 .settings__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   text-align: left;
   border: none;
   border-radius: 8px;
@@ -126,7 +129,6 @@ body.settings-body {
 
 .settings__update {
   width: 100%;
-  max-width: 420px;
   margin: 4px 0 8px;
 }
 
@@ -200,14 +202,28 @@ body.settings-body {
   color: #f4f4f8;
 }
 
+/* Обе строки хоткеев — одна сетка: фиксированная колонка лейбла,
+   поле — 1fr, колонка кнопки зарезервирована в ОБОИХ строках.
+   Поля получаются пиксель-в-пиксель одинаковые. */
 .settings__option--hotkey {
+  display: grid;
+  grid-template-columns: 140px 1fr 96px;
+  gap: 12px;
   align-items: center;
 }
 
+.settings__option--hotkey .settings__option-label {
+  white-space: nowrap;
+}
+
 .settings__option--hotkey .settings__hotkey-input {
-  width: 320px;
-  max-width: 100%;
-  margin-left: auto;
+  width: 100%;
+  margin: 0;
+}
+
+.settings__hotkey-ghost {
+  width: 96px;
+  height: 1px;
 }
 
 .settings__option-label {
@@ -217,7 +233,8 @@ body.settings-body {
   font-weight: 500;
 }
 
-.settings__option input[type="text"] {
+.settings__option input[type="text"],
+.settings__option input[type="password"] {
   width: 100%;
   padding: 10px 12px;
   border-radius: 8px;
@@ -566,7 +583,6 @@ body.settings-body {
 }
 
 .settings__group {
-  max-width: 520px;
   background: #1c1c24;
   border-radius: 12px;
   padding: 16px;
@@ -716,7 +732,6 @@ body.settings-body {
 }
 
 .settings__vars {
-  max-width: 560px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -825,4 +840,316 @@ body.settings-body {
   .settings__templates-toolbar .settings__danger--compact {
     margin-left: 0;
   }
+}
+
+/* Раздел «Скриншот» */
+
+.settings__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings__nav-icon {
+  flex-shrink: 0;
+  color: #8b8b98;
+}
+
+.settings__nav-item:hover .settings__nav-icon,
+.settings__nav-item.is-active .settings__nav-icon {
+  color: #e8e8ec;
+}
+
+/* Кнопка «Очистить» — в высоту поля, в едином с ним стиле */
+.settings__option--hotkey .settings__ghost {
+  height: 100%;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: #121214;
+  color: #e8e8ec;
+  font-size: 13px;
+}
+
+.settings__option--hotkey .settings__ghost:hover:not([disabled]) {
+  border-color: #5164f2;
+  color: #f4f4f8;
+}
+
+.settings__select {
+  width: 320px;
+  max-width: 100%;
+  margin-left: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #3a3a44;
+  background: #121214;
+  color: #f4f4f8;
+  font: inherit;
+}
+
+.settings__range-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #aeb0be;
+}
+
+.settings__range-row input[type="range"] {
+  flex: 1;
+  max-width: 260px;
+  accent-color: #5164f2;
+}
+
+.settings__range-value {
+  min-width: 28px;
+  text-align: right;
+  color: #e8e8ec;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings__quick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings__quick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Перебиваем общее правило .settings__option input[type="text"]: имя редактируется как обычный текст */
+.settings__quick-row input[type="text"] {
+  flex-shrink: 0;
+  width: 180px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #f4f4f8;
+  font: inherit;
+  font-size: 13px;
+}
+
+.settings__quick-row input[type="text"]:hover {
+  border-color: #3a3a44;
+}
+
+.settings__quick-row input[type="text"]:focus {
+  border-color: #5164f2;
+  background: #121214;
+  outline: none;
+}
+
+.settings__quick-path {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #8b8b98;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings__screenshot-muted {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #8b8b98;
+}
+
+.settings__screenshot-status-ok {
+  margin: 0;
+  font-size: 13px;
+  color: #63c977;
+}
+
+.settings__screenshot-status-error {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #ff8787;
+  word-break: break-word;
+}
+
+.settings__screenshot-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.settings__screenshot-progress {
+  font-size: 13px;
+  color: #aeb0be;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Пресеты быстрого скриншота */
+
+.settings__preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings__preset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #2a2a32;
+  border-radius: 10px;
+  background: #16161c;
+}
+
+.settings__preset-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings__preset-top input[type="text"] {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.settings__preset-title {
+  flex: 1;
+  min-width: 140px;
+}
+
+.settings__preset-hotkey {
+  width: 210px;
+  max-width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.settings__preset-top .settings__ghost {
+  flex-shrink: 0;
+}
+
+.settings__preset .settings__path-field input[type="text"] {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.settings__preset .settings__folder-btn {
+  padding: 7px 12px;
+  font-size: 12px;
+}
+
+.settings__preset-template {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid #3a3a44;
+  background: #121214;
+  color: #f4f4f8;
+  font: inherit;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.settings__preset-hint {
+  margin: -2px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #8b8b98;
+}
+
+.settings__preset-segs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings__preset-seg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings__preset-seg .settings__seg {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* Внешний API (для скриптов) */
+
+.settings__api {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+
+.settings__api-port {
+  width: 120px;
+  padding: 7px 10px;
+  margin-left: auto;
+  border-radius: 8px;
+  border: 1px solid #3a3a44;
+  background: #121214;
+  color: #f4f4f8;
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+
+.settings__api-token-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings__api-token {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 6px 10px;
+  border: 1px solid #2a2a32;
+  border-radius: 8px;
+  background: #121214;
+  color: #c8c8d4;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.settings__api-code {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.12);
+  color: #8b8b98;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Сплиттер между навигацией и контентом настроек */
+.settings__splitter {
+  flex-shrink: 0;
+  width: 5px;
+  margin-left: -3px;
+  z-index: 5;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.settings__splitter:hover,
+.settings__splitter:active {
+  background: rgba(81, 100, 242, 0.55);
 }

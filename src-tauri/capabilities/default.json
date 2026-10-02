@@ -2,11 +2,27 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Snipcast windows",
-  "windows": ["main", "settings"],
+  "windows": [
+    "main",
+    "settings",
+    "aiagent",
+    "capture-*",
+    "pin-*",
+    "pinmenu"
+  ],
   "permissions": [
     "core:default",
     "opener:default",
     "autostart:default",
-    "dialog:default"
+    "dialog:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-set-focus",
+    "core:window:allow-close",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "notification:default"
   ]
 }

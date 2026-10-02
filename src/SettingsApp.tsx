@@ -13,7 +13,15 @@ import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { keyboardEventToTauriHotkey, tauriHotkeyToDisplay } from "./hotkeyFormat";
-import type { AppConfig, TemplateGroup, TemplateNode, TemplateStore, UpdateInfo } from "./types";
+import type {
+  AppConfig,
+  QuickLocation,
+  ScreenshotPreset,
+  TemplateGroup,
+  TemplateNode,
+  TemplateStore,
+  UpdateInfo,
+} from "./types";
 import {
   applyPaletteListDensity,
   applyUiThemeSetting,
@@ -47,8 +55,135 @@ function updateStageLabel(stage: string): string {
 }
 const GROUP_COLORS = ["#5164f2", "#e8590c", "#20c997", "#be4bdb", "#339af0", "#fa5252"];
 
-type Section = "general" | "templates" | "variables" | "update";
+type Section = "general" | "screenshot" | "ai" | "templates" | "variables" | "update";
 type GroupModalMode = "create" | "master" | null;
+
+type OcrModelsStatus = {
+  installed: boolean;
+  missing: string[];
+  downloadMb?: number;
+  quality?: string;
+};
+
+type OcrProgress = { stage: string; done: number; total: number; message: string };
+
+/** PaddleOCR (модели и их загрузка) пока есть только в Windows. */
+const IS_MAC = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
+
+/** Максимальное число быстрых мест сохранения. */
+const MAX_QUICK_LOCATIONS = 8;
+
+/** Максимальное число пресетов быстрого скриншота (как в меню трея). */
+const MAX_SCREENSHOT_PRESETS = 8;
+
+type ApiStatus = {
+  running: boolean;
+  port: number;
+  token: string;
+  tokenPath: string;
+};
+
+/** Последний сегмент пути (разделители учитываем оба — путь приходит из системного диалога). */
+function pathBasename(p: string): string {
+  const trimmed = p.replace(/[\\/]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
+
+/** Ключ вне фокуса показываем замаскированным: начало....конец. */
+function maskAiKey(key: string): string {
+  if (!key) return "";
+  if (key.length <= 12) return "....";
+  return `${key.slice(0, 4)}....${key.slice(-4)}`;
+}
+
+function IconCamera({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={20}
+      height={20}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M3 8.2C3 7.1 3.9 6.2 5 6.2h2.6l1.4-2a1 1 0 0 1 .82-.42h4.36a1 1 0 0 1 .82.42l1.4 2H19c1.1 0 2 .9 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8.2Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12.4" r="3.4" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function IconSliders({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 7h9M17 7h3M4 17h3M11 17h9M4 12h13M20 12h0"
+        stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+      />
+      <circle cx="15" cy="7" r="2.1" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="9" cy="17" r="2.1" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="18.5" cy="12" r="2.1" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function IconLayers({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 4 3.5 8.4 12 12.8l8.5-4.4L12 4Z"
+        stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"
+      />
+      <path d="M4.5 12.4 12 16.3l7.5-3.9" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+      <path d="M4.5 16.4 12 20.3l7.5-3.9" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconBraces({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M9 4.5c-2 0-2 2.5-2 4s0 3-2 3.5c2 .5 2 2 2 3.5s0 4 2 4M15 4.5c2 0 2 2.5 2 4s0 3 2 3.5c-2 .5-2 2-2 3.5s0 4-2 4"
+        stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconRefresh({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M20 12a8 8 0 1 1-2.4-5.7M20 4v4h-4"
+        stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Искра ИИ (раздел «ИИ»): большая четырёхлучевая звезда + маленькая рядом. */
+function IconSpark({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M11 5.5l1.9 4.6 4.6 1.9-4.6 1.9-1.9 4.6-1.9-4.6L4.5 12l4.6-1.9L11 5.5z"
+        stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"
+      />
+      <path
+        d="M18.5 3.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z"
+        fill="currentColor" stroke="none"
+      />
+    </svg>
+  );
+}
+
 
 function cloneStore(root: TemplateStore): TemplateStore {
   return JSON.parse(JSON.stringify(root)) as TemplateStore;
@@ -322,14 +457,49 @@ async function saveConfig(next: AppConfig, opts?: { skipPaletteHotkeyApply?: boo
   });
 }
 
+const NAV_WIDTH_KEY = "snipcast.settings.navWidth";
+
 export function SettingsApp() {
   const [section, setSection] = useState<Section>("general");
+  /** Ширина навигации: тянется сплиттером, запоминается между запусками. */
+  const [navWidth, setNavWidth] = useState(() => {
+    const saved = Number(window.localStorage.getItem(NAV_WIDTH_KEY));
+    return Number.isFinite(saved) && saved >= 170 && saved <= 460 ? saved : 220;
+  });
+  const navDragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  const onSplitterPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    navDragRef.current = { startX: e.clientX, startW: navWidth };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* без захвата — тянем в пределах окна */
+    }
+  };
+  const onSplitterPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = navDragRef.current;
+    if (!d) return;
+    setNavWidth(Math.min(460, Math.max(170, d.startW + (e.clientX - d.startX))));
+  };
+  const onSplitterPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!navDragRef.current) return;
+    navDragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* уже отпущено */
+    }
+    window.localStorage.setItem(NAV_WIDTH_KEY, String(navWidth));
+  };
   const [config, setConfig] = useState<AppConfig | null>(null);
   const configRef = useRef<AppConfig | null>(null);
   configRef.current = config;
 
   const [autostartOn, setAutostartOn] = useState(true);
   const [hotkeyDisplay, setHotkeyDisplay] = useState("");
+  const [screenshotHotkeyDisplay, setScreenshotHotkeyDisplay] = useState("");
+  const [screenshotHotkeyCapturing, setScreenshotHotkeyCapturing] = useState(false);
   const [errorToast, setErrorToast] = useState("");
   const [version, setVersion] = useState("");
   const [varRows, setVarRows] = useState<{ key: string; value: string }[]>([]);
@@ -346,6 +516,36 @@ export function SettingsApp() {
   const [updateError, setUpdateError] = useState("");
   /** Портативную сборку могли положить туда, куда нельзя писать без администратора. */
   const [updateWritable, setUpdateWritable] = useState(true);
+
+  const [ocrLanguages, setOcrLanguages] = useState<string[]>([]);
+  const [paddleStatus, setPaddleStatus] = useState<OcrModelsStatus | null>(null);
+  const [paddleDownloading, setPaddleDownloading] = useState(false);
+  const [paddleProgress, setPaddleProgress] = useState<OcrProgress | null>(null);
+  const [paddleError, setPaddleError] = useState("");
+  /** Черновики текстовых полей раздела «Скриншот»: на диск пишем с задержкой, а не на каждый символ. */
+  const [fileTemplateDraft, setFileTemplateDraft] = useState("");
+  const [jpegQualityDraft, setJpegQualityDraft] = useState(90);
+  const [quickLocationsDraft, setQuickLocationsDraft] = useState<QuickLocation[]>([]);
+  const [presetsDraft, setPresetsDraft] = useState<ScreenshotPreset[]>([]);
+  /** Индекс пресета, чей хоткей сейчас записывается (для плейсхолдера поля). */
+  const [presetHotkeyCapturing, setPresetHotkeyCapturing] = useState<number | null>(null);
+  /** True, пока какое-либо поле хоткея пресета в фокусе (для снятия хоткеев после сохранения). */
+  const presetCapturingRef = useRef(false);
+  const [apiPortDraft, setApiPortDraft] = useState("");
+  const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null);
+  const [apiError, setApiError] = useState("");
+  const [apiTokenVisible, setApiTokenVisible] = useState(false);
+  const [apiTokenCopied, setApiTokenCopied] = useState(false);
+  const [apiRegenHint, setApiRegenHint] = useState(false);
+  /** Раздел «ИИ»: черновики ключа/модели (на диск пишем с задержкой). */
+  const [aiKeyDraft, setAiKeyDraft] = useState("");
+  /** В фокусе показываем реальный ключ (для редактирования), вне — маску. */
+  const [aiKeyFocused, setAiKeyFocused] = useState(false);
+  const [aiModelDraft, setAiModelDraft] = useState("");
+  const [aiTesting, setAiTesting] = useState(false);
+  /** null — проверки ещё не было; true/false — результат snipcast_ai_test. */
+  const [aiTestOk, setAiTestOk] = useState<boolean | null>(null);
+  const [aiTestError, setAiTestError] = useState("");
 
   const [store, setStore] = useState<TemplateStore | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -366,7 +566,7 @@ export function SettingsApp() {
   }, []);
 
   const patchAppConfig = useCallback(
-    async (patch: Partial<Pick<AppConfig, "theme" | "paletteListDensity">>) => {
+    async (patch: Partial<AppConfig>) => {
       if (!config) return;
       const next: AppConfig = { ...config, ...patch };
       setConfig(next);
@@ -376,6 +576,16 @@ export function SettingsApp() {
       }
       try {
         await saveConfig(next, { skipPaletteHotkeyApply: true });
+        // Бэкенд присваивает id пресетам, пришедшим с пустым id. Подтягиваем
+        // назначенные идентификаторы, чтобы повторные сохранения и ссылки
+        // из скриптов (POST /preset) не теряли пресет при смене id.
+        if ("screenshotPresets" in patch) {
+          const saved = await invoke<AppConfig>("snipcast_get_config");
+          setConfig((prev) =>
+            prev ? { ...prev, screenshotPresets: saved.screenshotPresets } : prev,
+          );
+          setPresetsDraft(saved.screenshotPresets);
+        }
       } catch (e) {
         showError(e);
       }
@@ -406,6 +616,14 @@ export function SettingsApp() {
       applyUiThemeSetting(normalizeUiTheme(c.theme));
       applyPaletteListDensity(normalizePaletteListDensity(c.paletteListDensity));
       setHotkeyDisplay(tauriHotkeyToDisplay(c.paletteHotkey));
+      setScreenshotHotkeyDisplay(tauriHotkeyToDisplay(c.screenshotHotkey));
+      setFileTemplateDraft(c.screenshotFileTemplate);
+      setJpegQualityDraft(c.screenshotJpegQuality);
+      setQuickLocationsDraft(c.screenshotQuickLocations);
+      setPresetsDraft(c.screenshotPresets);
+      setApiPortDraft(String(c.apiPort));
+      setAiKeyDraft(c.aiApiKey ?? "");
+      setAiModelDraft(c.aiModel ?? "");
     } else {
       problems.push(`настройки: ${String(cRes.reason)}`);
     }
@@ -457,6 +675,62 @@ export function SettingsApp() {
       .catch(() => setUpdateWritable(true));
     return () => unlisten?.();
   }, []);
+
+  // Прогресс загрузки моделей PaddleOCR: загрузка идёт в фоне, финал приходит здесь же
+  // (stage "done" / "error"), поэтому статус моделей перечитываем по событию.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listen<OcrProgress>("snipcast://ocr-progress", (e) => {
+      const p = e.payload;
+      setPaddleProgress(p);
+      if (p.stage === "done") {
+        setPaddleDownloading(false);
+        setPaddleError("");
+        void invoke<OcrModelsStatus>("snipcast_ocr_models_status")
+          .then(setPaddleStatus)
+          .catch(() => {});
+      } else if (p.stage === "error") {
+        setPaddleDownloading(false);
+        setPaddleError(p.message);
+      }
+    }).then((f) => {
+      unlisten = f;
+    });
+    return () => unlisten?.();
+  }, []);
+
+  // Языки системного OCR достаточно запросить один раз за жизнь окна.
+  useEffect(() => {
+    let cancelled = false;
+    void invoke<string[]>("snipcast_ocr_languages")
+      .then((langs) => {
+        if (!cancelled) setOcrLanguages(langs);
+      })
+      .catch(() => {
+        /* Селект останется только с «Как в системе» — не критично. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const paddleBlockVisible =
+    section === "screenshot" && config?.screenshotOcrEngine === "paddle" && !IS_MAC;
+
+  useEffect(() => {
+    if (!paddleBlockVisible) return;
+    let cancelled = false;
+    void invoke<OcrModelsStatus>("snipcast_ocr_models_status")
+      .then((st) => {
+        if (!cancelled) setPaddleStatus(st);
+      })
+      .catch((e) => {
+        if (!cancelled) setPaddleError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [paddleBlockVisible]);
 
   const checkUpdate = useCallback(async () => {
     setUpdateError("");
@@ -519,6 +793,110 @@ export function SettingsApp() {
     }, 500);
     return () => clearTimeout(t);
   }, [varRows, showError]);
+
+  // Раздел «Скриншот»: текстовые поля и качество сохраняем с задержкой,
+  // структурные изменения (выбор/удаление папок) пишутся сразу из хендлеров.
+  useEffect(() => {
+    if (!config || fileTemplateDraft === config.screenshotFileTemplate) return;
+    const t = window.setTimeout(() => {
+      void patchAppConfig({ screenshotFileTemplate: fileTemplateDraft });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [fileTemplateDraft, config, patchAppConfig]);
+
+  useEffect(() => {
+    if (!config || jpegQualityDraft === config.screenshotJpegQuality) return;
+    const t = window.setTimeout(() => {
+      void patchAppConfig({ screenshotJpegQuality: jpegQualityDraft });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [jpegQualityDraft, config, patchAppConfig]);
+
+  useEffect(() => {
+    if (!config) return;
+    if (JSON.stringify(quickLocationsDraft) === JSON.stringify(config.screenshotQuickLocations)) return;
+    const t = window.setTimeout(() => {
+      void patchAppConfig({ screenshotQuickLocations: quickLocationsDraft });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [quickLocationsDraft, config, patchAppConfig]);
+
+  // Пресеты: черновик, сохранение с задержкой (хоткеи бэкенд валидирует целиком).
+  useEffect(() => {
+    if (!config) return;
+    if (JSON.stringify(presetsDraft) === JSON.stringify(config.screenshotPresets)) return;
+    const t = window.setTimeout(() => {
+      void patchAppConfig({ screenshotPresets: presetsDraft });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [presetsDraft, config, patchAppConfig]);
+
+  // Раздел «ИИ»: ключ и модель пишем с задержкой, как шаблон имени файла.
+  useEffect(() => {
+    if (!config || aiKeyDraft === config.aiApiKey) return;
+    const t = window.setTimeout(() => {
+      void patchAppConfig({ aiApiKey: aiKeyDraft });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [aiKeyDraft, config, patchAppConfig]);
+
+  useEffect(() => {
+    if (!config || aiModelDraft === config.aiModel) return;
+    const t = window.setTimeout(() => {
+      void patchAppConfig({ aiModel: aiModelDraft });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [aiModelDraft, config, patchAppConfig]);
+
+  /** Проверка ключа/модели на стороне бэкенда; ошибка приходит через reject. */
+  const runAiTest = useCallback(async () => {
+    setAiTesting(true);
+    setAiTestOk(null);
+    setAiTestError("");
+    try {
+      await invoke<string>("snipcast_ai_test");
+      setAiTestOk(true);
+    } catch (e) {
+      setAiTestOk(false);
+      setAiTestError(String(e));
+    } finally {
+      setAiTesting(false);
+    }
+  }, []);
+
+  const refreshApiStatus = useCallback(async () => {
+    try {
+      const st = await invoke<ApiStatus>("snipcast_api_status");
+      setApiStatus(st);
+      setApiError("");
+    } catch (e) {
+      // Без Tauri (обычный браузер) или при сбое сервера — просто показываем ошибку.
+      console.error("[Snipcast] не удалось получить статус внешнего API:", e);
+      setApiError(String(e));
+    }
+  }, []);
+
+  // Статус API нужен, когда открыт раздел «Скриншот».
+  useEffect(() => {
+    if (section !== "screenshot") return;
+    void refreshApiStatus();
+  }, [section, refreshApiStatus]);
+
+  // Порт API: клиентская валидация 1024..65535, сохранение с задержкой;
+  // после сохранения статус перечитываем (сервер перезапускается сам).
+  const apiPortParsed = Number.parseInt(apiPortDraft, 10);
+  const apiPortInvalid =
+    apiPortDraft.trim() !== "" &&
+    (!Number.isInteger(apiPortParsed) || apiPortParsed < 1024 || apiPortParsed > 65535);
+
+  useEffect(() => {
+    if (!config || apiPortDraft.trim() === "" || apiPortInvalid) return;
+    if (apiPortParsed === config.apiPort) return;
+    const t = window.setTimeout(() => {
+      void patchAppConfig({ apiPort: apiPortParsed }).then(refreshApiStatus);
+    }, 500);
+    return () => clearTimeout(t);
+  }, [apiPortDraft, apiPortParsed, apiPortInvalid, config, patchAppConfig, refreshApiStatus]);
 
   const selectedGroup = useMemo<TemplateGroup | null>(() => {
     if (!store || !selectedGroupId) return null;
@@ -654,6 +1032,245 @@ export function SettingsApp() {
       setConfig(next);
     } catch (err) {
       showError(err);
+    }
+  };
+
+  const onScreenshotHotkeyFocus = () => {
+    setScreenshotHotkeyCapturing(true);
+    void invoke("snipcast_screenshot_hotkey_pause").catch(() => {});
+  };
+
+  const onScreenshotHotkeyBlur = () => {
+    setScreenshotHotkeyCapturing(false);
+    void invoke("snipcast_screenshot_hotkey_resume").catch(showError);
+  };
+
+  const onScreenshotHotkeyKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    if (e.code === "Escape") {
+      e.currentTarget.blur();
+      return;
+    }
+    const tauri = keyboardEventToTauriHotkey(e.nativeEvent);
+    if (!tauri) return;
+    const base = configRef.current;
+    if (!base) return;
+    const next = { ...base, screenshotHotkey: tauri };
+    setScreenshotHotkeyDisplay(tauriHotkeyToDisplay(tauri));
+    try {
+      // Как у палитры: пока поле в фокусе, комбинация снята (pause) и применится resume по blur.
+      await saveConfig(next, { skipPaletteHotkeyApply: true });
+      setConfig(next);
+    } catch (err) {
+      showError(err);
+    }
+  };
+
+  const onClearPaletteHotkey = async () => {
+    const base = configRef.current;
+    if (!base || !base.paletteHotkey.trim()) return;
+    const next = { ...base, paletteHotkey: "" };
+    setHotkeyDisplay("");
+    try {
+      // Без skip: бэкенд сразу снимает прежнюю комбинацию.
+      await saveConfig(next);
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const onClearScreenshotHotkey = async () => {
+    const base = configRef.current;
+    if (!base || !base.screenshotHotkey.trim()) return;
+    const next = { ...base, screenshotHotkey: "" };
+    setScreenshotHotkeyDisplay("");
+    try {
+      // Без skip: бэкенд должен снять прежнюю комбинацию сразу
+      // (resume с пустым хоткеем старую регистрацию не убирает).
+      await saveConfig(next);
+      setConfig(next);
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const pickScreenshotSaveDir = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: true,
+        title: "Выберите папку для скриншотов",
+      });
+      if (!selected) return;
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (typeof path !== "string") return;
+      await patchAppConfig({ screenshotSaveDir: path });
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const addQuickLocation = async () => {
+    if (quickLocationsDraft.length >= MAX_QUICK_LOCATIONS) return;
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: true,
+        title: "Выберите папку для быстрого сохранения",
+      });
+      if (!selected) return;
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (typeof path !== "string") return;
+      const next = [...quickLocationsDraft, { name: pathBasename(path), path }];
+      setQuickLocationsDraft(next);
+      await patchAppConfig({ screenshotQuickLocations: next });
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const removeQuickLocation = async (idx: number) => {
+    const next = quickLocationsDraft.filter((_, j) => j !== idx);
+    setQuickLocationsDraft(next);
+    await patchAppConfig({ screenshotQuickLocations: next });
+  };
+
+  const renameQuickLocation = (idx: number, name: string) => {
+    setQuickLocationsDraft((prev) => prev.map((q, j) => (j === idx ? { ...q, name } : q)));
+  };
+
+  // ------------------------------------------------------------------
+  // Пресеты быстрого скриншота
+  // ------------------------------------------------------------------
+
+  const updatePreset = (idx: number, patch: Partial<ScreenshotPreset>) => {
+    setPresetsDraft((prev) => prev.map((p, j) => (j === idx ? { ...p, ...patch } : p)));
+  };
+
+  const addPreset = () => {
+    if (presetsDraft.length >= MAX_SCREENSHOT_PRESETS) return;
+    // id="" — бэкенд присвоит постоянный id при сохранении конфига.
+    setPresetsDraft((prev) => [
+      ...prev,
+      { id: "", title: "Новый пресет", hotkey: "", dir: "", fileTemplate: "", action: "save", select: true },
+    ]);
+  };
+
+  const removePreset = (idx: number) => {
+    setPresetsDraft((prev) => prev.filter((_, j) => j !== idx));
+    if (presetHotkeyCapturing === idx) setPresetHotkeyCapturing(null);
+  };
+
+  const pickPresetDir = async (idx: number) => {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: true,
+        title: "Папка пресета быстрого скриншота",
+      });
+      if (!selected) return;
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (typeof path !== "string") return;
+      updatePreset(idx, { dir: path });
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  // Запись хоткея пресета: пока поле в фокусе, все хоткеи пресетов сняты
+  // (snipcast_preset_hotkeys_pause), применяются обратно по blur (resume).
+
+  const onPresetHotkeyFocus = (idx: number) => {
+    setPresetHotkeyCapturing(idx);
+    presetCapturingRef.current = true;
+    void invoke("snipcast_preset_hotkeys_pause").catch(() => {});
+  };
+
+  const onPresetHotkeyBlur = () => {
+    setPresetHotkeyCapturing(null);
+    presetCapturingRef.current = false;
+    void invoke("snipcast_preset_hotkeys_resume").catch(showError);
+  };
+
+  const savePresetsNow = async (nextPresets: ScreenshotPreset[]) => {
+    const base = configRef.current;
+    if (!base) return;
+    const next = { ...base, screenshotPresets: nextPresets };
+    try {
+      await saveConfig(next, { skipPaletteHotkeyApply: true });
+      setConfig(next);
+    } catch (e) {
+      // Дубликаты комбинаций и прочие ошибки валидации бэкенда — сюда.
+      showError(e);
+    }
+  };
+
+  const onPresetHotkeyKeyDown = async (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    if (e.code === "Escape") {
+      e.currentTarget.blur();
+      return;
+    }
+    const tauri = keyboardEventToTauriHotkey(e.nativeEvent);
+    if (!tauri) return;
+    const nextPresets = presetsDraft.map((p, j) => (j === idx ? { ...p, hotkey: tauri } : p));
+    setPresetsDraft(nextPresets);
+    await savePresetsNow(nextPresets);
+    // Сохранение перерегистрировало комбинации. Если поле всё ещё в фокусе —
+    // снимем снова, чтобы нажатия при записи не запускали чужие пресеты.
+    if (presetCapturingRef.current) {
+      void invoke("snipcast_preset_hotkeys_pause").catch(() => {});
+    }
+  };
+
+  const clearPresetHotkey = async (idx: number) => {
+    const nextPresets = presetsDraft.map((p, j) => (j === idx ? { ...p, hotkey: "" } : p));
+    setPresetsDraft(nextPresets);
+    await savePresetsNow(nextPresets);
+  };
+
+  // ------------------------------------------------------------------
+  // Внешний API (для скриптов)
+  // ------------------------------------------------------------------
+
+  const onApiToggle = async (on: boolean) => {
+    await patchAppConfig({ apiEnabled: on });
+    await refreshApiStatus();
+  };
+
+  const copyApiToken = async () => {
+    const token = apiStatus?.token;
+    if (!token) return;
+    try {
+      await navigator.clipboard.writeText(token);
+      setApiTokenCopied(true);
+      window.setTimeout(() => setApiTokenCopied(false), 1500);
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const regenerateApiToken = async () => {
+    try {
+      const token = await invoke<string>("snipcast_api_token_regenerate");
+      setApiStatus((prev) => (prev ? { ...prev, token } : prev));
+      setApiRegenHint(true);
+      window.setTimeout(() => setApiRegenHint(false), 4000);
+    } catch (e) {
+      showError(e);
+    }
+  };
+
+  const onDownloadOcrModels = async () => {
+    setPaddleError("");
+    setPaddleDownloading(true);
+    setPaddleProgress(null);
+    try {
+      // Только запуск: прогресс и финал (done/error) приходят событием snipcast://ocr-progress.
+      await invoke("snipcast_ocr_download_models");
+    } catch (e) {
+      setPaddleDownloading(false);
+      setPaddleError(String(e));
     }
   };
 
@@ -1125,7 +1742,7 @@ export function SettingsApp() {
 
   return (
     <div className="settings" onContextMenu={(e) => e.preventDefault()}>
-      <aside className="settings__sidebar">
+      <aside className="settings__sidebar" style={{ width: navWidth }}>
         <div className="settings__brand">Snipcast</div>
         <nav className="settings__nav">
           <button
@@ -1133,13 +1750,31 @@ export function SettingsApp() {
             className={section === "general" ? "settings__nav-item is-active" : "settings__nav-item"}
             onClick={() => setSection("general")}
           >
+            <IconSliders className="settings__nav-icon" />
             Основные
+          </button>
+          <button
+            type="button"
+            className={section === "screenshot" ? "settings__nav-item is-active" : "settings__nav-item"}
+            onClick={() => setSection("screenshot")}
+          >
+            <IconCamera className="settings__nav-icon" />
+            Скриншот
+          </button>
+          <button
+            type="button"
+            className={section === "ai" ? "settings__nav-item is-active" : "settings__nav-item"}
+            onClick={() => setSection("ai")}
+          >
+            <IconSpark className="settings__nav-icon" />
+            ИИ
           </button>
           <button
             type="button"
             className={section === "templates" ? "settings__nav-item is-active" : "settings__nav-item"}
             onClick={() => setSection("templates")}
           >
+            <IconLayers className="settings__nav-icon" />
             Шаблоны
           </button>
           <button
@@ -1147,6 +1782,7 @@ export function SettingsApp() {
             className={section === "variables" ? "settings__nav-item is-active" : "settings__nav-item"}
             onClick={() => setSection("variables")}
           >
+            <IconBraces className="settings__nav-icon" />
             Переменные
           </button>
           <button
@@ -1154,10 +1790,21 @@ export function SettingsApp() {
             className={section === "update" ? "settings__nav-item is-active" : "settings__nav-item"}
             onClick={() => setSection("update")}
           >
+            <IconRefresh className="settings__nav-icon" />
             Обновление
           </button>
         </nav>
       </aside>
+
+      <div
+        className="settings__splitter"
+        role="separator"
+        aria-orientation="vertical"
+        title="Потяните, чтобы изменить ширину панели"
+        onPointerDown={onSplitterPointerDown}
+        onPointerMove={onSplitterPointerMove}
+        onPointerUp={onSplitterPointerUp}
+      />
 
       <main className="settings__main">
         {errorToast ? <div className="settings__toast settings__toast--error">{errorToast}</div> : null}
@@ -1241,10 +1888,608 @@ export function SettingsApp() {
                   onFocus={onHotkeyFocus}
                   onBlur={onHotkeyBlur}
                   onKeyDown={(e) => void onHotkeyKeyDown(e)}
-                  placeholder="Нажмите комбинацию клавиш"
+                  placeholder={
+                    hotkeyDisplay ? "" : "Не назначен — открывайте из трея"
+                  }
                   spellCheck={false}
                   aria-label="Запись хоткея палитры"
                 />
+                <button
+                  type="button"
+                  className="settings__ghost"
+                  disabled={!hotkeyDisplay.trim()}
+                  onClick={() => void onClearPaletteHotkey()}
+                >
+                  Очистить
+                </button>
+              </div>
+
+              <div className="settings__option settings__option--hotkey">
+                <span className="settings__option-label">Хоткей скриншота</span>
+                <input
+                  type="text"
+                  readOnly
+                  className="settings__hotkey-input"
+                  value={screenshotHotkeyDisplay}
+                  onFocus={onScreenshotHotkeyFocus}
+                  onBlur={onScreenshotHotkeyBlur}
+                  onKeyDown={(e) => void onScreenshotHotkeyKeyDown(e)}
+                  placeholder={
+                    screenshotHotkeyCapturing
+                      ? "Нажмите сочетание…"
+                      : screenshotHotkeyDisplay
+                        ? ""
+                        : "Не назначен — доступно из трея"
+                  }
+                  spellCheck={false}
+                  aria-label="Запись хоткея скриншота"
+                />
+                <button
+                  type="button"
+                  className="settings__ghost"
+                  disabled={!screenshotHotkeyDisplay.trim()}
+                  onClick={() => void onClearScreenshotHotkey()}
+                >
+                  Очистить
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {section === "screenshot" && config ? (
+          <div className="settings__panel">
+            <div className="settings__group">
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">Формат файла</span>
+                <div className="settings__segment-row" role="radiogroup" aria-label="Формат файла скриншота">
+                  {(
+                    [
+                      { v: "png" as const, label: "PNG" },
+                      { v: "jpeg" as const, label: "JPEG" },
+                    ] as const
+                  ).map(({ v, label }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      role="radio"
+                      aria-checked={config.screenshotFormat === v}
+                      className={`settings__seg${config.screenshotFormat === v ? " is-active" : ""}`}
+                      onClick={() => void patchAppConfig({ screenshotFormat: v })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {config.screenshotFormat === "jpeg" ? (
+                  <label className="settings__range-row">
+                    <span>Качество</span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={jpegQualityDraft}
+                      onChange={(e) => setJpegQualityDraft(Number(e.target.value))}
+                      aria-label="Качество JPEG"
+                    />
+                    <span className="settings__range-value">{jpegQualityDraft}</span>
+                  </label>
+                ) : null}
+              </div>
+
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">Шаблон имени файла</span>
+                <input
+                  type="text"
+                  value={fileTemplateDraft}
+                  onChange={(e) => setFileTemplateDraft(e.target.value)}
+                  placeholder="{datetime}"
+                  spellCheck={false}
+                  aria-label="Шаблон имени файла скриншота"
+                />
+                <p className="settings__screenshot-muted">
+                  Доступные подстановки: {"{date}"}, {"{time}"}, {"{datetime}"}, {"{n}"}
+                </p>
+              </div>
+
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">Папка по умолчанию</span>
+                <div className="settings__path-field">
+                  <input
+                    type="text"
+                    readOnly
+                    value={config.screenshotSaveDir}
+                    placeholder="Не выбрана — открывается диалог"
+                    spellCheck={false}
+                    aria-label="Папка для сохранения скриншотов по умолчанию"
+                  />
+                  <button
+                    type="button"
+                    className="settings__folder-btn"
+                    onClick={() => void pickScreenshotSaveDir()}
+                  >
+                    Выбрать…
+                  </button>
+                  <button
+                    type="button"
+                    className="settings__ghost"
+                    disabled={!config.screenshotSaveDir}
+                    onClick={() => void patchAppConfig({ screenshotSaveDir: "" })}
+                  >
+                    Сбросить
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">Быстрые места сохранения</span>
+                {quickLocationsDraft.length === 0 ? (
+                  <p className="settings__screenshot-muted">
+                    Пока нет папок — удерживайте «Сохранить» в скриншоте, чтобы выбрать из списка
+                  </p>
+                ) : (
+                  <div className="settings__quick-list">
+                    {quickLocationsDraft.map((q, i) => (
+                      <div key={`${q.path}-${i}`} className="settings__quick-row">
+                        <input
+                          type="text"
+                          className="settings__quick-name-input"
+                          value={q.name}
+                          onChange={(e) => renameQuickLocation(i, e.target.value)}
+                          spellCheck={false}
+                          aria-label="Название быстрого места"
+                        />
+                        <span className="settings__quick-path" title={q.path}>
+                          {q.path}
+                        </span>
+                        <button
+                          type="button"
+                          className="settings__ghost"
+                          aria-label={`Удалить «${q.name}»`}
+                          onClick={() => void removeQuickLocation(i)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div>
+                  <button
+                    type="button"
+                    className="settings__ghost"
+                    disabled={quickLocationsDraft.length >= MAX_QUICK_LOCATIONS}
+                    onClick={() => void addQuickLocation()}
+                  >
+                    Добавить папку…
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">Распознавание текста (OCR)</span>
+                <div className="settings__segment-row" role="radiogroup" aria-label="Движок распознавания текста">
+                  {(
+                    [
+                      { v: "system" as const, label: "Системный" },
+                      { v: "paddle" as const, label: "PaddleOCR" },
+                    ] as const
+                  ).map(({ v, label }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      role="radio"
+                      aria-checked={config.screenshotOcrEngine === v}
+                      className={`settings__seg${config.screenshotOcrEngine === v ? " is-active" : ""}`}
+                      onClick={() => void patchAppConfig({ screenshotOcrEngine: v })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="settings__option">
+                <span className="settings__option-label">Язык</span>
+                <select
+                  className="settings__select"
+                  value={config.screenshotOcrLanguage || "auto"}
+                  onChange={(e) => void patchAppConfig({ screenshotOcrLanguage: e.target.value })}
+                  aria-label="Язык распознавания текста (системный OCR)"
+                >
+                  <option value="auto">Как в системе</option>
+                    <option value="all">Все языки Windows (медленнее)</option>
+                  {ocrLanguages.map((lang) => (
+                    <option key={lang} value={lang}>
+                      {lang}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {config.screenshotOcrEngine === "paddle" ? (
+                IS_MAC ? (
+                  <p className="settings__screenshot-muted">PaddleOCR пока доступен только в Windows</p>
+                ) : (
+                  <div className="settings__option settings__option--stack">
+                    <span className="settings__option-label">PaddleOCR · точность моделей</span>
+                    <div className="settings__segment-row" role="radiogroup" aria-label="Точность моделей PaddleOCR">
+                      {(
+                        [
+                          { v: "mobile" as const, label: "Быстрая" },
+                          { v: "server" as const, label: "Точная" },
+                        ] as const
+                      ).map(({ v, label }) => (
+                        <button
+                          key={v}
+                          type="button"
+                          role="radio"
+                          aria-checked={(config.screenshotOcrQuality || "mobile") === v}
+                          className={`settings__seg${(config.screenshotOcrQuality || "mobile") === v ? " is-active" : ""}`}
+                          onClick={() => {
+                            void patchAppConfig({ screenshotOcrQuality: v }).then(() => {
+                              void invoke<OcrModelsStatus>("snipcast_ocr_models_status")
+                                .then(setPaddleStatus)
+                                .catch(() => {});
+                            });
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="settings__screenshot-muted">
+                      «Точная»: серверные детектор и модель zh/en/ja (+~170 МБ докачки,
+                      заметно медленнее — десятки секунд на весь экран). Кириллическая
+                      модель всегда лёгкая: серверной версии не существует.
+                    </p>
+                    {paddleStatus?.installed ? (
+                      <p className="settings__screenshot-status-ok">
+                        Модели загружены (det + rec)
+                      </p>
+                    ) : (
+                      <div className="settings__screenshot-actions">
+                        <button
+                          type="button"
+                          className="settings__primary"
+                          disabled={paddleDownloading}
+                          onClick={() => void onDownloadOcrModels()}
+                        >
+                          {typeof paddleStatus?.downloadMb === "number"
+                            ? `Скачать модели (~${paddleStatus.downloadMb} МБ)`
+                            : "Скачать модели"}
+                        </button>
+                        {paddleDownloading ? (
+                          <span className="settings__screenshot-progress">
+                            {!paddleProgress
+                              ? "Начинаю загрузку…"
+                              : paddleProgress.total > 0
+                                ? `${paddleProgress.message} — ${Math.min(100, Math.round((paddleProgress.done / paddleProgress.total) * 100))}%`
+                                : paddleProgress.message}
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+                    {paddleError ? (
+                      <p className="settings__screenshot-status-error">{paddleError}</p>
+                    ) : null}
+                  </div>
+                )
+              ) : null}
+            </div>
+
+            <div className="settings__group">
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">Пресеты быстрого скриншота</span>
+                <p className="settings__screenshot-muted">
+                  Хоткей или трей → снимок в заданную папку с нужным именем. В режиме выделения
+                  действие выполнится сразу после того, как вы нарисуете рамку.
+                </p>
+                {presetsDraft.length === 0 ? (
+                  <p className="settings__screenshot-muted">
+                    Пресетов нет — добавьте, чтобы сохранять скриншоты одной комбинацией
+                  </p>
+                ) : (
+                  <div className="settings__preset-list">
+                    {presetsDraft.map((p, i) => (
+                      <div key={i} className="settings__preset">
+                        <div className="settings__preset-top">
+                          <input
+                            type="text"
+                            className="settings__preset-title"
+                            value={p.title}
+                            onChange={(e) => updatePreset(i, { title: e.target.value })}
+                            placeholder="Название"
+                            spellCheck={false}
+                            aria-label="Название пресета"
+                          />
+                          <input
+                            type="text"
+                            readOnly
+                            className="settings__hotkey-input settings__preset-hotkey"
+                            value={tauriHotkeyToDisplay(p.hotkey)}
+                            onFocus={() => onPresetHotkeyFocus(i)}
+                            onBlur={onPresetHotkeyBlur}
+                            onKeyDown={(e) => void onPresetHotkeyKeyDown(i, e)}
+                            placeholder={
+                              presetHotkeyCapturing === i
+                                ? "Нажмите сочетание…"
+                                : p.hotkey
+                                  ? ""
+                                  : "Не назначен"
+                            }
+                            spellCheck={false}
+                            aria-label={`Хоткей пресета «${p.title}»`}
+                          />
+                          <button
+                            type="button"
+                            className="settings__ghost"
+                            disabled={!p.hotkey.trim()}
+                            onClick={() => void clearPresetHotkey(i)}
+                          >
+                            Очистить
+                          </button>
+                          <button
+                            type="button"
+                            className="settings__ghost"
+                            aria-label={`Удалить пресет «${p.title}»`}
+                            onClick={() => removePreset(i)}
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                        <p className="settings__preset-hint">
+                          Пустой хоткей — запуск из трея и через API.
+                        </p>
+                        <div className="settings__path-field">
+                          <input
+                            type="text"
+                            readOnly
+                            value={p.dir}
+                            placeholder="Общая папка"
+                            spellCheck={false}
+                            aria-label={`Папка пресета «${p.title}»`}
+                          />
+                          <button
+                            type="button"
+                            className="settings__folder-btn"
+                            onClick={() => void pickPresetDir(i)}
+                          >
+                            Выбрать…
+                          </button>
+                          <button
+                            type="button"
+                            className="settings__ghost"
+                            disabled={!p.dir}
+                            onClick={() => updatePreset(i, { dir: "" })}
+                          >
+                            Сбросить
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          className="settings__preset-template"
+                          value={p.fileTemplate}
+                          onChange={(e) => updatePreset(i, { fileTemplate: e.target.value })}
+                          placeholder="Общий шаблон"
+                          spellCheck={false}
+                          aria-label={`Шаблон имени файла пресета «${p.title}»`}
+                        />
+                        <p className="settings__preset-hint">
+                          {"{date}"}, {"{time}"}, {"{datetime}"}, {"{n}"}
+                        </p>
+                        <div className="settings__preset-segs">
+                          <div className="settings__preset-seg">
+                            <span className="settings__field-label">Действие</span>
+                            <div className="settings__segment-row" role="radiogroup" aria-label="Действие пресета">
+                              {(
+                                [
+                                  { v: "save" as const, label: "Сохранить" },
+                                  { v: "ocr" as const, label: "Сохранить + текст" },
+                                  { v: "pin" as const, label: "Закрепить" },
+                                ] as const
+                              ).map(({ v, label }) => (
+                                <button
+                                  key={v}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={p.action === v}
+                                  className={`settings__seg${p.action === v ? " is-active" : ""}`}
+                                  onClick={() => updatePreset(i, { action: v })}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="settings__preset-seg">
+                            <span className="settings__field-label">Режим</span>
+                            <div className="settings__segment-row" role="radiogroup" aria-label="Режим пресета">
+                              {(
+                                [
+                                  { v: true as const, label: "Выделение области" },
+                                  { v: false as const, label: "Весь экран" },
+                                ] as const
+                              ).map(({ v, label }) => (
+                                <button
+                                  key={v ? "select" : "full"}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={p.select === v}
+                                  className={`settings__seg${p.select === v ? " is-active" : ""}`}
+                                  onClick={() => updatePreset(i, { select: v })}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div>
+                  <button
+                    type="button"
+                    className="settings__ghost"
+                    disabled={presetsDraft.length >= MAX_SCREENSHOT_PRESETS}
+                    onClick={addPreset}
+                  >
+                    Добавить пресет
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings__group">
+              <div className="settings__option">
+                <span className="settings__option-label">Внешний API (для скриптов)</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={config.apiEnabled}
+                  aria-label="Включить внешний API"
+                  className={`settings__toggle${config.apiEnabled ? " is-on" : ""}`}
+                  onClick={() => void onApiToggle(!config.apiEnabled)}
+                >
+                  <span className="settings__toggle-knob" />
+                </button>
+              </div>
+              {config.apiEnabled ? (
+                <div className="settings__api">
+                  <div className="settings__option">
+                    <span className="settings__option-label">Порт</span>
+                    <input
+                      type="number"
+                      className="settings__api-port"
+                      min={1024}
+                      max={65535}
+                      value={apiPortDraft}
+                      onChange={(e) => setApiPortDraft(e.target.value)}
+                      aria-label="Порт внешнего API"
+                    />
+                  </div>
+                  {apiPortInvalid ? (
+                    <p className="settings__screenshot-status-error">
+                      Порт должен быть числом от 1024 до 65535
+                    </p>
+                  ) : (
+                    <p className="settings__screenshot-muted">
+                      Перезапуск приложения не требуется — сервер перезапустится сам.
+                    </p>
+                  )}
+                  {apiError ? (
+                    <p className="settings__screenshot-status-error">{apiError}</p>
+                  ) : apiStatus ? (
+                    apiStatus.running ? (
+                      <p className="settings__screenshot-status-ok">
+                        Работает на 127.0.0.1:{apiStatus.port}
+                      </p>
+                    ) : (
+                      <p className="settings__screenshot-status-error">Не запущен</p>
+                    )
+                  ) : null}
+                  {apiStatus ? (
+                    <div className="settings__api-token-row">
+                      <span className="settings__api-token" title={apiTokenVisible ? apiStatus.token : ""}>
+                        {apiTokenVisible ? apiStatus.token : "••••••••••••"}
+                      </span>
+                      <button
+                        type="button"
+                        className="settings__ghost"
+                        onClick={() => setApiTokenVisible((v) => !v)}
+                      >
+                        {apiTokenVisible ? "Скрыть" : "Показать"}
+                      </button>
+                      <button
+                        type="button"
+                        className="settings__ghost"
+                        onClick={() => void copyApiToken()}
+                      >
+                        {apiTokenCopied ? "Скопировано" : "Копировать"}
+                      </button>
+                      <button
+                        type="button"
+                        className="settings__ghost"
+                        onClick={() => void regenerateApiToken()}
+                      >
+                        Перевыпустить
+                      </button>
+                      {apiRegenHint ? (
+                        <span className="settings__screenshot-muted">
+                          старый токен больше не работает
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <pre className="settings__api-code">
+{`POST http://127.0.0.1:${apiStatus?.port ?? config.apiPort}/capture  ·  заголовок X-Snipcast-Token  ·  GET /health — без токена`}
+{apiStatus?.tokenPath ? `\nТокен хранится в файле ${apiStatus.tokenPath}` : ""}
+                  </pre>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {section === "ai" && config ? (
+          <div className="settings__panel">
+            <div className="settings__group">
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">Провайдер Polza (polza.ai)</span>
+                <p className="settings__screenshot-muted">
+                  ИИ-агент отвечает на вопросы по выделенным областям экрана.
+                  Ключ берётся на polza.ai.
+                </p>
+              </div>
+
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">API-ключ</span>
+                <input
+                  type="text"
+                  value={aiKeyFocused ? aiKeyDraft : maskAiKey(aiKeyDraft)}
+                  onChange={(e) => setAiKeyDraft(e.target.value)}
+                  onFocus={() => setAiKeyFocused(true)}
+                  onBlur={() => setAiKeyFocused(false)}
+                  placeholder="Ключ из polza.ai"
+                  spellCheck={false}
+                  autoComplete="off"
+                  aria-label="API-ключ Polza"
+                />
+              </div>
+
+              <div className="settings__option settings__option--stack">
+                <span className="settings__option-label">Модель</span>
+                <input
+                  type="text"
+                  value={aiModelDraft}
+                  onChange={(e) => setAiModelDraft(e.target.value)}
+                  placeholder="openai/gpt-6-luna"
+                  spellCheck={false}
+                  aria-label="Модель ИИ"
+                />
+                <p className="settings__screenshot-muted">Список моделей: polza.ai/models</p>
+              </div>
+
+              <div className="settings__option settings__option--stack">
+                <div className="settings__screenshot-actions">
+                  <button
+                    type="button"
+                    className="settings__ghost"
+                    disabled={aiTesting}
+                    onClick={() => void runAiTest()}
+                  >
+                    {aiTesting ? "Проверяю…" : "Проверить подключение"}
+                  </button>
+                </div>
+                {aiTestOk === true ? (
+                  <p className="settings__screenshot-status-ok">Подключение работает</p>
+                ) : null}
+                {aiTestOk === false ? (
+                  <p className="settings__screenshot-status-error">{aiTestError}</p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -1601,3 +2846,4 @@ export function SettingsApp() {
     </div>
   );
 }
+import type { PointerEvent as ReactPointerEvent } from "react";

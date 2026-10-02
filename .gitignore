@@ -1,4 +1,5 @@
 node_modules/
+tests/__pycache__/
 dist/
 dist-release/
 .DS_Store

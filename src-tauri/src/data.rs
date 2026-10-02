@@ -2,12 +2,52 @@
 //! Шаблоны: каталог `templates/`, по одному JSON на группу (полная `TemplateGroup`) и манифест `groups.json`.
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const DEFAULT_PALETTE_HOTKEY: &str = "CommandOrControl+Shift+Backslash";
+pub const DEFAULT_SCREENSHOT_HOTKEY: &str = "PrintScreen";
+
+/// Быстрое место сохранения скриншотов (для удержания кнопки «Сохранить»).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickLocation {
+    pub name: String,
+    pub path: String,
+}
+
+/// Пресет быстрого скриншота: хоткей → папка/имя/действие.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenshotPreset {
+    /// Стабильный идентификатор (заполняется при сохранении, если пуст).
+    #[serde(default)]
+    pub id: String,
+    pub title: String,
+    /// "" — хоткей не назначен (пресет доступен через API по id).
+    #[serde(default)]
+    pub hotkey: String,
+    /// "" — использовать общую папку по умолчанию.
+    #[serde(default)]
+    pub dir: String,
+    /// "" — использовать общий шаблон имени.
+    #[serde(default)]
+    pub file_template: String,
+    /// "save" | "ocr" | "pin"
+    #[serde(default = "default_preset_action")]
+    pub action: String,
+    /// true — открыть оверлей выделения (действие сработает сразу после
+    /// выделения); false — беззвучно снять весь экран.
+    #[serde(default)]
+    pub select: bool,
+}
+
+fn default_preset_action() -> String {
+    "save".to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,6 +95,47 @@ pub struct AppConfig {
     pub theme: String,
     #[serde(default = "default_palette_list_density")]
     pub palette_list_density: String,
+    // --- скриншоты ---
+    #[serde(default = "default_screenshot_hotkey")]
+    pub screenshot_hotkey: String,
+    /// "png" | "jpeg"
+    #[serde(default = "default_screenshot_format")]
+    pub screenshot_format: String,
+    /// 1..=100, используется только для jpeg
+    #[serde(default = "default_screenshot_jpeg_quality")]
+    pub screenshot_jpeg_quality: u8,
+    /// Шаблон имени файла: {date}, {time}, {datetime}, {n}
+    #[serde(default = "default_screenshot_file_template")]
+    pub screenshot_file_template: String,
+    /// Папка по умолчанию для диалога сохранения; "" — системная папка по умолчанию.
+    #[serde(default)]
+    pub screenshot_save_dir: String,
+    #[serde(default = "default_quick_locations")]
+    pub screenshot_quick_locations: Vec<QuickLocation>,
+    /// "system" | "paddle"
+    #[serde(default = "default_screenshot_ocr_engine")]
+    pub screenshot_ocr_engine: String,
+    /// "auto" или BCP-47 тег ("ru-RU", "en-US")
+    #[serde(default)]
+    pub screenshot_ocr_language: String,
+    /// "mobile" | "server" — лёгкий быстрый пакет моделей или тяжёлый точный
+    #[serde(default = "default_screenshot_ocr_quality")]
+    pub screenshot_ocr_quality: String,
+    /// Пресеты быстрого скриншота (хоткей/папка/действие).
+    #[serde(default)]
+    pub screenshot_presets: Vec<ScreenshotPreset>,
+    /// Внешний HTTP API на 127.0.0.1 (для скриптов).
+    #[serde(default)]
+    pub api_enabled: bool,
+    #[serde(default = "default_api_port")]
+    pub api_port: u16,
+    // --- ИИ-агент ---
+    /// API-ключ Polza (OpenAI-совместимый API); "" — не задан.
+    #[serde(default)]
+    pub ai_api_key: String,
+    /// Модель для чата по скриншотам.
+    #[serde(default = "default_ai_model")]
+    pub ai_model: String,
 }
 
 fn default_autostart() -> bool {
@@ -73,6 +154,58 @@ fn default_palette_list_density() -> String {
     "normal".to_string()
 }
 
+fn default_screenshot_hotkey() -> String {
+    DEFAULT_SCREENSHOT_HOTKEY.to_string()
+}
+
+fn default_screenshot_format() -> String {
+    "png".to_string()
+}
+
+fn default_screenshot_jpeg_quality() -> u8 {
+    90
+}
+
+fn default_screenshot_file_template() -> String {
+    "Snip {datetime}".to_string()
+}
+
+/// Папка сохранения по умолчанию — рабочий стол.
+fn default_screenshot_save_dir() -> String {
+    dirs::desktop_dir()
+        .or_else(dirs::home_dir)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+fn default_quick_locations() -> Vec<QuickLocation> {
+    let mut out = Vec::new();
+    if let Some(desktop) = dirs::desktop_dir() {
+        out.push(QuickLocation {
+            name: "Рабочий стол".to_string(),
+            path: desktop.to_string_lossy().into_owned(),
+        });
+    }
+    out
+}
+
+fn default_screenshot_ocr_engine() -> String {
+    // Paddle быстрого качества — лучший баланс скорости и точности.
+    "paddle".to_string()
+}
+
+fn default_screenshot_ocr_quality() -> String {
+    "mobile".to_string()
+}
+
+fn default_api_port() -> u16 {
+    52300
+}
+
+fn default_ai_model() -> String {
+    "openai/gpt-6-luna".to_string()
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -80,8 +213,54 @@ impl Default for AppConfig {
             autostart: true,
             theme: default_ui_theme(),
             palette_list_density: default_palette_list_density(),
+            screenshot_hotkey: default_screenshot_hotkey(),
+            screenshot_format: default_screenshot_format(),
+            screenshot_jpeg_quality: default_screenshot_jpeg_quality(),
+            screenshot_file_template: default_screenshot_file_template(),
+            screenshot_save_dir: default_screenshot_save_dir(),
+            screenshot_quick_locations: default_quick_locations(),
+            screenshot_ocr_engine: default_screenshot_ocr_engine(),
+            screenshot_ocr_language: String::new(),
+            screenshot_ocr_quality: default_screenshot_ocr_quality(),
+            screenshot_presets: Vec::new(),
+            api_enabled: false,
+            api_port: default_api_port(),
+            ai_api_key: String::new(),
+            ai_model: default_ai_model(),
         }
     }
+}
+
+/// Токен внешнего API: файл `api-token` рядом с конфигом.
+/// Создаётся при первом включении API; скрипты читают его оттуда.
+pub fn api_token_path() -> PathBuf {
+    snipcast_base_dir().join("api-token")
+}
+
+pub fn ensure_api_token() -> Result<String, String> {
+    let path = api_token_path();
+    if let Ok(existing) = fs::read_to_string(&path) {
+        let t = existing.trim().to_string();
+        if !t.is_empty() {
+            return Ok(t);
+        }
+    }
+    fs::create_dir_all(snipcast_base_dir()).map_err(|e| e.to_string())?;
+    // 32 hex-символа из sha256(время + pid) — достаточно для локального API,
+    // отдельный генератор случайности не нужен.
+    let seed = format!(
+        "{}|{}|{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default(),
+        std::process::id(),
+        path.display(),
+    );
+    let hex = format!("{:x}", Sha256::digest(seed.as_bytes()));
+    let token = hex[..32].to_string();
+    fs::write(&path, &token).map_err(|e| format!("запись {}: {e}", path.display()))?;
+    Ok(token)
 }
 
 #[derive(Debug, Clone, Serialize)]
