@@ -10,7 +10,102 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::Emitter;
+use tauri::{Emitter,Manager};
+use std::sync::Mutex;
+use chrono::{Local,Timelike};
+
+pub const NOTICE_LABEL:&str="update-notice";
+#[derive(Default,Serialize,Deserialize)]
+#[serde(default,rename_all="camelCase")]
+struct ScheduleState { last_attempt:Option<String>, skipped_version:Option<String>, dismissed_day:Option<String> }
+#[derive(Default)]
+struct BackgroundState { persisted:ScheduleState,pending:Option<UpdateInfo>,shown:bool }
+#[derive(Default)]
+pub struct UpdateRuntime { check:tauri::async_runtime::Mutex<()>, background:Mutex<BackgroundState> }
+fn schedule_path()->PathBuf {crate::data::snipcast_base_dir().join("update-state.json")}
+fn persist(state:&ScheduleState)->Result<(),String> {
+    let path=schedule_path();if let Some(dir)=path.parent(){fs::create_dir_all(dir).map_err(|e|e.to_string())?;}
+    let tmp=path.with_extension("json.tmp");fs::write(&tmp,serde_json::to_vec(state).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+    fs::rename(tmp,path).map_err(|e|e.to_string())
+}
+fn due(state:&ScheduleState,day:&str,hour:u32)->bool {hour>=10 && state.last_attempt.as_deref()!=Some(day)}
+fn offer(state:&ScheduleState,info:&UpdateInfo,day:&str)->bool {
+    info.available && state.skipped_version.as_deref()!=Some(info.latest_version.as_str()) && state.dismissed_day.as_deref()!=Some(day)
+}
+
+pub fn start_scheduler(app:tauri::AppHandle) {
+    {
+        let runtime=app.state::<UpdateRuntime>();let mut bg=runtime.background.lock().unwrap();
+        bg.persisted=fs::read(schedule_path()).ok().and_then(|b|serde_json::from_slice(&b).ok()).unwrap_or_default();
+    }
+    std::thread::spawn(move || loop {
+        let now=Local::now();let day=now.format("%Y-%m-%d").to_string();
+        let run={let runtime=app.state::<UpdateRuntime>();let mut bg=runtime.background.lock().unwrap();
+            if due(&bg.persisted,&day,now.hour()) {bg.persisted.last_attempt=Some(day.clone());let _=persist(&bg.persisted);true}else{false}};
+        if run {
+            let result=tauri::async_runtime::block_on(async {
+                let runtime=app.state::<UpdateRuntime>();let _guard=runtime.check.lock().await;
+                fetch_latest_release().await.map(release_info)
+            });
+            match result {
+                Ok(info)=>{let runtime=app.state::<UpdateRuntime>();let mut bg=runtime.background.lock().unwrap();
+                    if offer(&bg.persisted,&info,&day) {bg.pending=Some(info);}}
+                Err(e)=>{
+                    let path=crate::data::snipcast_base_dir().join("update-errors.log");
+                    if let Ok(mut file)=fs::OpenOptions::new().create(true).append(true).open(path){let _=writeln!(file,"{} {e}",Local::now());}
+                }
+            }
+        }
+        show_pending(&app);
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    });
+}
+
+pub(crate) fn show_pending(app:&tauri::AppHandle) {
+    if crate::screenshot::capture_active(app) {return}
+    {let runtime=app.state::<UpdateRuntime>();let mut bg=runtime.background.lock().unwrap();
+        if bg.pending.is_none() || bg.shown {return} bg.shown=true;}
+    let app2=app.clone();let _=app.run_on_main_thread(move || {
+        let win=if let Some(w)=app2.get_webview_window(NOTICE_LABEL){Ok(w)}else{
+            tauri::WebviewWindowBuilder::new(&app2,NOTICE_LABEL,tauri::WebviewUrl::App("index.html".into()))
+                .title("Обновление Snipcast").inner_size(520.0,430.0).decorations(false).resizable(false)
+                .always_on_top(true).visible(false).center().build()};
+        match win {
+            Ok(w)=>{
+                if crate::screenshot::capture_active(&app2) {
+                    app2.state::<UpdateRuntime>().background.lock().unwrap().shown=false;
+                    return;
+                }
+                let _=w.emit("snipcast://update-notice",());let _=w.show();let _=w.set_focus();
+            }
+            Err(_)=>{app2.state::<UpdateRuntime>().background.lock().unwrap().shown=false;}
+        }
+    });
+}
+
+pub(crate) fn suspend_notice(app:&tauri::AppHandle){
+    if let Some(window)=app.get_webview_window(NOTICE_LABEL){let _=window.hide();}
+    app.state::<UpdateRuntime>().background.lock().unwrap().shown=false;
+}
+
+#[tauri::command]
+pub fn snipcast_update_notice_info(app:tauri::AppHandle)->Option<UpdateInfo> {
+    app.state::<UpdateRuntime>().background.lock().ok()?.pending.clone()
+}
+pub fn dismiss_notice(app:&tauri::AppHandle,skip:Option<String>)->Result<(),String> {
+    {let runtime=app.state::<UpdateRuntime>();let mut bg=runtime.background.lock().map_err(|e|e.to_string())?;
+        if let Some(version)=skip {
+            if bg.pending.as_ref().map(|i|&i.latest_version)!=Some(&version){return Err("версия обновления изменилась".into())}
+            bg.persisted.skipped_version=Some(version);
+        }else {bg.persisted.dismissed_day=Some(Local::now().format("%Y-%m-%d").to_string());}
+        persist(&bg.persisted)?;bg.pending=None;bg.shown=false;
+    }
+    if let Some(win)=app.get_webview_window(NOTICE_LABEL){let _=win.destroy();} Ok(())
+}
+#[tauri::command]
+pub fn snipcast_skip_update(app:tauri::AppHandle,version:String)->Result<(),String>{dismiss_notice(&app,Some(version))}
+#[tauri::command]
+pub fn snipcast_dismiss_update(app:tauri::AppHandle)->Result<(),String>{dismiss_notice(&app,None)}
 
 const REPO: &str = "maxat322/Snipcast";
 /// Имя портативного exe среди файлов релиза.
@@ -58,15 +153,21 @@ fn emit_stage(app: &tauri::AppHandle, stage: &str) {
 fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(user_agent()) // GitHub API отвергает запросы без User-Agent
+        .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| format!("не удалось создать HTTP-клиент: {e}"))
 }
 
 async fn fetch_latest_release() -> Result<GhRelease, String> {
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
+    // Isolated native debug QA can exercise the real scheduler against a local fixture.
+    #[cfg(debug_assertions)]
+    let url=std::env::var("SNIPCAST_UPDATE_TEST_URL").ok().filter(|u|
+        std::env::var_os("SNIPCAST_DATA_DIR").is_some() && u.starts_with("http://127.0.0.1:")) .unwrap_or(url);
     let resp = client()?
         .get(&url)
         .header("Accept", "application/vnd.github+json")
+        .timeout(std::time::Duration::from_secs(20))
         .send()
         .await
         .map_err(|e| format!("не удалось связаться с GitHub: {e}"))?;
@@ -97,8 +198,11 @@ fn find_asset<'a>(assets: &'a [GhAsset], name: &str) -> Option<&'a GhAsset> {
 }
 
 #[tauri::command]
-pub async fn snipcast_check_update() -> Result<UpdateInfo, String> {
-    let rel = fetch_latest_release().await?;
+pub async fn snipcast_check_update(app:tauri::AppHandle) -> Result<UpdateInfo, String> {
+    let runtime=app.state::<UpdateRuntime>();let _guard=runtime.check.lock().await;
+    Ok(release_info(fetch_latest_release().await?))
+}
+fn release_info(rel:GhRelease)->UpdateInfo {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let latest = rel.tag_name.trim().trim_start_matches('v').to_string();
 
@@ -106,14 +210,14 @@ pub async fn snipcast_check_update() -> Result<UpdateInfo, String> {
     let has_files = exe_asset.is_some()
         && find_asset(&rel.assets, &format!("{ASSET_NAME}{SHA_SUFFIX}")).is_some();
 
-    Ok(UpdateInfo {
+    UpdateInfo {
         // Без нужных файлов в релизе обновляться нечем, даже если версия новее.
         available: is_newer(&latest, &current) && has_files,
         current_version: current,
         latest_version: latest,
         notes: rel.body.unwrap_or_default(),
         size: exe_asset.map(|a| a.size).unwrap_or(0),
-    })
+    }
 }
 
 /// Из файла контрольной суммы берём первую последовательность из 64 hex-символов:
@@ -181,10 +285,18 @@ fn swap_running_exe(new_bytes: &[u8]) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub async fn snipcast_install_update(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn snipcast_install_update(app: tauri::AppHandle,expected_version:Option<String>) -> Result<(), String> {
+    let runtime=app.state::<UpdateRuntime>();let _guard=runtime.check.lock().await;
     // Ссылки берём из свежего ответа GitHub, а не из того, что прислал интерфейс.
     emit_stage(&app, "check");
     let rel = fetch_latest_release().await?;
+    let version=rel.tag_name.trim().trim_start_matches('v');
+    if expected_version.as_deref().is_some_and(|expected|expected!=version) {
+        let info=release_info(rel);
+        {let mut bg=runtime.background.lock().map_err(|e|e.to_string())?;bg.pending=Some(info);}
+        let _=app.emit("snipcast://update-notice",());
+        return Err("Релиз изменился. Список изменений обновлён; нажмите «Обновить» повторно.".into())
+    }
 
     let exe_asset = find_asset(&rel.assets, ASSET_NAME)
         .ok_or_else(|| format!("в релизе нет файла {ASSET_NAME}"))?;
@@ -255,6 +367,22 @@ pub fn snipcast_update_writable() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn schedule_start_resume_and_day_boundary(){
+        let mut state=ScheduleState::default();assert!(!due(&state,"2026-10-07",9));
+        assert!(due(&state,"2026-10-07",10));state.last_attempt=Some("2026-10-07".into());
+        assert!(!due(&state,"2026-10-07",23));assert!(!due(&state,"2026-10-08",9));assert!(due(&state,"2026-10-08",10));
+        let restored:ScheduleState=serde_json::from_slice(&serde_json::to_vec(&state).unwrap()).unwrap();
+        assert!(!due(&restored,"2026-10-07",14));
+    }
+    #[test]
+    fn skip_one_version_and_dismiss_one_day(){
+        let mut state=ScheduleState::default();
+        let mut info=UpdateInfo{available:true,current_version:"0.35.0".into(),latest_version:"0.36.0".into(),notes:"Changes".into(),size:1};
+        assert!(offer(&state,&info,"2026-10-07"));state.skipped_version=Some("0.36.0".into());
+        assert!(!offer(&state,&info,"2026-10-08"));info.latest_version="0.37.0".into();assert!(offer(&state,&info,"2026-10-08"));
+        state.dismissed_day=Some("2026-10-08".into());assert!(!offer(&state,&info,"2026-10-08"));assert!(offer(&state,&info,"2026-10-09"));
+    }
 
     #[test]
     fn parses_sha256_in_both_formats() {

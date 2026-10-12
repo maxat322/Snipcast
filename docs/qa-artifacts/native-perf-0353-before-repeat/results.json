@@ -1,0 +1,22 @@
+{
+  "source": "dist-release\\snipcast-0352-qa.exe",
+  "monitors": 1,
+  "openMs": [
+    472.9,
+    301.2,
+    314.1,
+    302.5
+  ],
+  "strokeFrames": [
+    {
+      "cpuThrottle": 1,
+      "medianMs": 16.69999998807907,
+      "p95Ms": 17
+    },
+    {
+      "cpuThrottle": 6,
+      "medianMs": 16.69999998807907,
+      "p95Ms": 18
+    }
+  ]
+}

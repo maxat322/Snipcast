@@ -1,0 +1,23 @@
+{
+  "version": "0.36.1",
+  "bytes": 17426944,
+  "sha256": "e9656f8e24755a7da4c3d371b2cce7696883b018cfa82a1ba9b0dfa9dfcb6362",
+  "fileVersion": "0.36.1",
+  "productVersion": "0.36.1",
+  "previous": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\snipcast.previous-0.36.0-before-fixes-20261011-131924.exe",
+  "previousSha256": "bbc0c703fe0e9261dc03d181aade9741cd8f92ae36a0dc42f9174e248805fad8",
+  "primaryUpdated": true,
+  "primaryIssue": "",
+  "frontend": "index-B65PamAT.js",
+  "css": "index-Q27GWjuj.css",
+  "latestCheckReport": "docs/qa-0.36.1-video.md",
+  "nativeQAResults": [
+    "dist-release/video-native-fixes-0361-release/results.json",
+    "dist-release/video-native-fixes-0361-aligned-release/results.json"
+  ],
+  "identifier": "com.snipcast.app",
+  "nativeQAIdentifier": "com.snipcast.video-qa",
+  "sourceCommitted": false,
+  "githubPublished": false,
+  "userProcessPreserved": true
+}

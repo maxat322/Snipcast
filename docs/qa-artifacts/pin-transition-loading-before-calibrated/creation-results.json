@@ -1,0 +1,16 @@
+[
+  {
+    "variant": 0,
+    "visibleFrames": 22,
+    "badFrames": 2,
+    "finalError": 0,
+    "displayColorDifference": 34
+  },
+  {
+    "variant": 1,
+    "visibleFrames": 22,
+    "badFrames": 1,
+    "finalError": 0,
+    "displayColorDifference": 34
+  }
+]

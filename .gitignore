@@ -2,6 +2,7 @@ node_modules/
 tests/__pycache__/
 dist/
 dist-release/
+.qa-work/
 .DS_Store
 Thumbs.db
 *.local

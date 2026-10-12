@@ -1,0 +1,30 @@
+[
+  {
+    "context": "capture",
+    "theme": "light",
+    "normal": "rgb(44, 53, 68)",
+    "selected": "rgb(49, 64, 158)",
+    "hover": "rgb(49, 64, 158)"
+  },
+  {
+    "context": "capture",
+    "theme": "dark",
+    "normal": "rgb(201, 201, 212)",
+    "selected": "rgb(255, 255, 255)",
+    "hover": "rgb(255, 255, 255)"
+  },
+  {
+    "context": "pin",
+    "theme": "light",
+    "normal": "rgb(44, 53, 68)",
+    "selected": "rgb(49, 64, 158)",
+    "hover": "rgb(49, 64, 158)"
+  },
+  {
+    "context": "pin",
+    "theme": "dark",
+    "normal": "rgb(201, 201, 212)",
+    "selected": "rgb(255, 255, 255)",
+    "hover": "rgb(255, 255, 255)"
+  }
+]

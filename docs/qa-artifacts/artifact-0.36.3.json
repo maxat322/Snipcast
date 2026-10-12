@@ -1,0 +1,15 @@
+{
+  "qa": "pin-annotation-native-0363-complete",
+  "file": "snipcast-0.36.3.exe",
+  "version": "0.36.3",
+  "sha256": "8c12d30ea30abce50c6b62ce0ed96ba4649eba114df4e5d4e02639b7394668e9",
+  "bytes": 17417216,
+  "checks": [
+    "npm run build",
+    "cargo check --release",
+    "cargo test --release --lib: 19 passed",
+    "pin annotation browser matrix: 6 theme/DPI combinations",
+    "capture shortcut regressions",
+    "native PNG pixel equality, Save dialog/cancel, quick save, C, stable geometry"
+  ]
+}

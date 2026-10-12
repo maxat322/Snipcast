@@ -1,0 +1,24 @@
+{
+  "baselineBackend": true,
+  "monitors": null,
+  "openMs": [
+    1884.8,
+    1861.4,
+    1857.2,
+    1843.4
+  ],
+  "processTreeWorkingSetBytes": [
+    690958336,
+    732749824,
+    758349824,
+    751980544
+  ],
+  "processTreePrivateBytes": [
+    460255232,
+    538886144,
+    574541824,
+    573206528
+  ],
+  "source": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\capture-assist-native\\selection-qa.exe",
+  "frontend": "current Vite source"
+}

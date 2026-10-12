@@ -1,0 +1,15 @@
+{
+  "version": "0.35.3",
+  "bytes": 17151488,
+  "sha256": "c41a8ceaa0cd9973c984150cdec3e30096398a7a8b6daf21ddde5f30b2b0b1b7",
+  "previous": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\snipcast.previous-0.35.2-20261008-124102.exe",
+  "previousSha256": "7418e580b8a81892c8ee12c8d518641161b22ef2f81b634713cec665339d9a27",
+  "frontend": "index-BeYtdBl5.js",
+  "css": "index-BITYOySN.css",
+  "previousBuild": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\snipcast.previous-0.35.3-before-pin-loading-20261008-140206.exe",
+  "previousBuildSha256": "09127e95e491e1eea1cf92350ce7b694f1d8328973c77630c895fedeba76c53d",
+  "latestCheckReport": "docs/qa-pin-transitions.md",
+  "githubRelease": "https://github.com/maxat322/Snipcast/releases/tag/0.35.3",
+  "githubPublicDownloadVerified": true,
+  "sourceCommitted": false
+}

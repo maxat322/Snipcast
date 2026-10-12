@@ -87,7 +87,8 @@ export function layoutText(s: TextShape): TextLayout {
 
 export function textBounds(s: TextShape): Bounds {
   const { w, h } = layoutText(s);
-  return { x: s.p1.x, y: s.p1.y, w, h };
+  const pad=s.outlineWidth??0;
+  return { x: s.p1.x-pad, y: s.p1.y-pad, w:w+pad*2, h:h+pad*2 };
 }
 
 export function drawText(ctx: CanvasRenderingContext2D, s: TextShape, k: number) {
@@ -97,14 +98,20 @@ export function drawText(ctx: CanvasRenderingContext2D, s: TextShape, k: number)
   ctx.font = `${s.fontSize}px ${TEXT_FONT}`;
   ctx.fillStyle = s.color;
   ctx.textBaseline = "alphabetic";
-  layout.lines.forEach((line, row) => line.runs.forEach((run) =>
-    ctx.fillText(run.text, s.p1.x + run.x, s.p1.y + layout.baseline + row * layout.lineHeight),
-  ));
+  // Match Chromium's native -webkit-text-stroke joins in the textarea.
+  ctx.lineJoin="miter";ctx.miterLimit=4;ctx.strokeStyle=s.outlineColor??"#000000";
+  ctx.lineWidth=(s.outlineWidth??0)*2;
+  layout.lines.forEach((line, row) => line.runs.forEach((run) => {
+    const x=s.p1.x+run.x,y=s.p1.y+layout.baseline+row*layout.lineHeight;
+    if(s.outlineWidth)ctx.strokeText(run.text,x,y);
+    ctx.fillText(run.text,x,y);
+  }));
   ctx.restore();
 }
 
 export function resizeText(original: TextShape, handle: TextHandle, start: Pt, pt: Pt): TextShape {
-  const bounds = textBounds(original);
+  const layout=layoutText(original);
+  const bounds={x:original.p1.x,y:original.p1.y,w:layout.w,h:layout.h};
   const dx = pt.x - start.x;
   const dy = pt.y - start.y;
   const west = handle.includes("w");

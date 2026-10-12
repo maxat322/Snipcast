@@ -1,0 +1,30 @@
+[
+  {
+    "screens": 1,
+    "cpuThrottle": 1,
+    "medianMs": 16.599999994039536,
+    "p95Ms": 18.099999994039536,
+    "heapBytes": 10000000
+  },
+  {
+    "screens": 1,
+    "cpuThrottle": 6,
+    "medianMs": 28,
+    "p95Ms": 34.19999998807907,
+    "heapBytes": 10600000
+  },
+  {
+    "screens": 2,
+    "cpuThrottle": 1,
+    "medianMs": 16.900000005960464,
+    "p95Ms": 29.299999982118607,
+    "heapBytes": 10000000
+  },
+  {
+    "screens": 2,
+    "cpuThrottle": 6,
+    "medianMs": 34.400000005960464,
+    "p95Ms": 43.900000005960464,
+    "heapBytes": 11200000
+  }
+]

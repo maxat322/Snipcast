@@ -1,0 +1,117 @@
+{
+  "idleMemory": {
+    "appWorkingSetBytes": 32272384,
+    "processTreeWorkingSetBytes": 449339392
+  },
+  "recordPanelPosition": {
+    "x": 810,
+    "y": 972
+  },
+  "globalRecordingKeys": true,
+  "recordingMemory": {
+    "appWorkingSetBytes": 124493824,
+    "processTreeWorkingSetBytes": 659075072
+  },
+  "recording": {
+    "id": 1,
+    "phase": "editing",
+    "durationMs": 3527,
+    "bytes": 54272,
+    "width": 386,
+    "height": 202,
+    "fps": 21,
+    "audio": true,
+    "hardware": false,
+    "frames": 70,
+    "exportPercent": 0,
+    "error": ""
+  },
+  "recordingKeysReleased": true,
+  "editorMemory": {
+    "appWorkingSetBytes": 55377920,
+    "processTreeWorkingSetBytes": 600371200
+  },
+  "themedDropdowns": true,
+  "nativeRoundedCorners": true,
+  "editorCapturable": true,
+  "cropResizeCursors": true,
+  "mp4": {
+    "duration": 1.996294,
+    "width": 346,
+    "height": 182,
+    "pixel": [
+      229,
+      85,
+      145,
+      255
+    ],
+    "bottom": [
+      77,
+      216,
+      176,
+      255
+    ],
+    "bytes": 44325
+  },
+  "controllerExcluded": true,
+  "mp4FrameMAE": 0.3704291854580872,
+  "audio": {
+    "channels": 2,
+    "duration": 1.8897708333333334,
+    "sampleRate": 48000
+  },
+  "gif": {
+    "dimensions": [
+      346,
+      182
+    ],
+    "frames": 19,
+    "loop": 0,
+    "bytes": 44548,
+    "durationMs": 2000
+  },
+  "gifFrameMAE": 4.964677422769908,
+  "cancelExport": {
+    "ok": false,
+    "error": "Сохранение отменено"
+  },
+  "pageErrors": [],
+  "version": "0.36.2",
+  "editorClosedAfterSave": true,
+  "confirmedCropUiExport": {
+    "duration": 1.996294,
+    "width": 376,
+    "height": 202,
+    "pixel": [
+      229,
+      85,
+      145,
+      255
+    ],
+    "bottom": [
+      77,
+      216,
+      176,
+      255
+    ]
+  },
+  "nextSelection": true,
+  "silentRecording": {
+    "id": 7,
+    "phase": "editing",
+    "durationMs": 1582,
+    "bytes": 15345,
+    "width": 386,
+    "height": 202,
+    "fps": 21,
+    "audio": false,
+    "hardware": false,
+    "frames": 33,
+    "exportPercent": 0,
+    "error": ""
+  },
+  "interfaceGifFrameMAE": 8.008943381384771,
+  "smallMp4FrameMAE": 1.2795717592592593,
+  "quickSaveClosedEditor": true,
+  "quickSaveFile": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\video-native-ux-0362-shortcuts-release\\quick-saves\\Video 2026-10-12_10-42-25 2.gif"
+}

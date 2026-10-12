@@ -2,10 +2,10 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type WheelEvent as ReactWheelEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -20,7 +20,14 @@ import { useAnnotationScene } from "./useAnnotationScene";
 import { useTextTool } from "./useTextTool";
 import { TextEditor, TextFrame } from "./TextEditor";
 import { waitForCapturePaint } from "./capturePresentation";
+import { proposedRect, formatPixel, mergeCandidates,indexCandidates,monitorRect, type CaptureCandidate,type ScreenMonitor } from "./captureAssist";
+import { sumNumbers } from "./sumNumbers";
+import { CaptureLoupe, type PixelSample } from "./CaptureLoupe";
+import { CaptureShortcuts, type HintMotion } from "./CaptureShortcuts";
+import {waitForPinPaint,type PinEditGeometry} from "./pinGeometry";
 import "../capture.css";
+import {ThemedSelect} from "../components/ThemedSelect";
+import {VideoIcon} from "../video/VideoApp";
 
 type PresetInfo = {
   title: string;
@@ -30,6 +37,11 @@ type PresetInfo = {
 };
 
 type CaptureInfo = {
+  videoSelection?:boolean;
+  sessionId?:string;
+  monitors?:ScreenMonitor[];
+  candidates?: CaptureCandidate[];
+  cursor?: Pt | null;
   label: string;
   imageName: string;
   x: number;
@@ -45,7 +57,7 @@ type Rect = { x: number; y: number; w: number; h: number };
 type HandleId = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
 type Drag =
-  | { mode: "new"; start: Pt }
+  | { mode: "new"; start: Pt; proposed: Rect | null; manual: boolean }
   | { mode: "move"; start: Pt; orig: Rect }
   | { mode: "resize"; handle: HandleId; orig: Rect }
   | { mode: "draw"; start: Pt }
@@ -331,10 +343,21 @@ function IconCopy() {
 // Компонент
 // ---------------------------------------------------------------------------
 
-export function CaptureOverlay() {
+export type PinAnnotationTarget = {
+  url: string; width: number; height: number;
+  sessionId?:number;
+  revision?:number;
+  onLayout?:(geometry:PinEditGeometry)=>void;
+  imageRect?:{x:number;y:number;width:number;height:number};
+  panelBounds?:{x:number;y:number;width:number;height:number};
+  onApply: (png: string) => Promise<void>; onCancel: () => Promise<void>;
+};
+
+export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget } = {}) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const draftCanvasRef=useRef<HTMLCanvasElement|null>(null);
   const tbRef = useRef<HTMLDivElement | null>(null);
 
   const [info, setInfo] = useState<CaptureInfo | null>(null);
@@ -343,7 +366,26 @@ export function CaptureOverlay() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [vp, setVp] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
   const [k, setK] = useState(1);
-  const [sel, setSel] = useState<Rect | null>(null);
+  const [sel, renderSel] = useState<Rect | null>(null);
+  const physicalSelection=useRef<Rect|null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [pointer, setPointer] = useState<Pt | null>(null);
+  const [releasePoint,setReleasePoint]=useState<Pt|null>(null);
+  const [detectionMode, setDetectionMode] = useState<"element" | "window">("element");
+  const [colorFormat, setColorFormat] = useState<"hex" | "rgb">("hex");
+  const [pixelSource, setPixelSource] = useState<HTMLCanvasElement | null>(null);
+  const pointerRef = useRef<Pt | null>(null);
+  const pointerRafRef = useRef(0);
+  const lastGesturePoint=useRef<Pt|null>(null);
+  const strokeSamples=useRef<Pt[]>([]);
+  const sampleRef = useRef<PixelSample | null>(null);
+  const onPixelSample = useCallback((value: PixelSample | null) => { sampleRef.current = value; }, []);
+  const assistRef = useRef({ mode: detectionMode, format: colorFormat });
+  assistRef.current = { mode: detectionMode, format: colorFormat };
+  const candidateIndex=useMemo(()=>indexCandidates(info?.candidates??[]),[info?.candidates]);
+  const candidateIndexRef=useRef(candidateIndex);candidateIndexRef.current=candidateIndex;
+  const suggestion = !selecting && !sel && pointer && info
+    ? proposedRect(candidateIndex, pointer, detectionMode, info, vp) : null;
   const [draft, setDraft] = useState<Shape | null>(null);
   const scene = useAnnotationScene();
   const { shapes, setShapes } = scene;
@@ -354,13 +396,22 @@ export function CaptureOverlay() {
   const [shapeKind, setShapeKind] = useState<ShapeKind>("rect");
   const [drawThickness, setDrawThickness] = useState(4);
   const [textSize, setTextSize] = useState(22);
+  const [textOutlineColor,setTextOutlineColor]=useState("#000000");
+  const [textOutlineWidth,setTextOutlineWidth]=useState(2);
+  const [textOutlineEnabled,setTextOutlineEnabled]=useState(false);
+  const hintMotion=useRef<HintMotion>({move:null});
   const [hoverText, setHoverText] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [videoFps,setVideoFps]=useState(30);
+  const [videoAudio,setVideoAudio]=useState(false);
+  const recordingAction=useRef<()=>Promise<void>>(async()=>{});
+  const busyRef = useRef(false); busyRef.current = busy;
   const [ocrLoading, setOcrLoading] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [hoverQuick, setHoverQuick] = useState<number | null>(null);
   const [tbSize, setTbSize] = useState<{ w: number; h: number } | null>(null);
+  const [optsSize,setOptsSize]=useState({w:0,h:0});
 
   const dragRef = useRef<Drag | null>(null);
   const holdRef = useRef<{ timer: number; fired: boolean } | null>(null);
@@ -385,11 +436,18 @@ export function CaptureOverlay() {
   cfgRef.current = cfg;
   const infoRef = useRef<CaptureInfo | null>(null);
   infoRef.current = info;
+  const setSel=useCallback((r:Rect|null)=>{
+    const i=infoRef.current,v=vpRef.current;
+    physicalSelection.current=r&&i?{x:i.x+r.x*i.width/v.w,y:i.y+r.y*i.height/v.h,w:r.w*i.width/v.w,h:r.h*i.height/v.h}:null;
+    selRef.current=r;renderSel(r);
+  },[]);
   /** Метка окна, чей кадр загружен, но ещё не отрисован: ждём onLoad <img>. */
   const readySignalRef = useRef<string | null>(null);
   const presentationSeqRef = useRef(0);
   const presentableImageRef = useRef<string | null>(null);
   const shownListenerRef = useRef<Promise<unknown> | null>(null);
+  const candidatesListenerRef = useRef<Promise<unknown> | null>(null);
+  const pendingCandidatesRef = useRef(new Map<string, CaptureCandidate[]>());
   const [presented, setPresented] = useState(isDemoMode);
   const selectedIdRef = useRef<number | null>(null);
   selectedIdRef.current = selectedId;
@@ -397,7 +455,8 @@ export function CaptureOverlay() {
   const toolRef = useRef(tool);
   toolRef.current = tool;
   const textTool = useTextTool({ scene, select: setSelectedId, leaveTool: () => setTool(null),
-    nextId: () => idSeqRef.current++, color: drawColor, fontSize: textSize });
+    nextId: () => idSeqRef.current++, color: drawColor, fontSize: textSize,
+    outlineColor:textOutlineColor,outlineWidth:textOutlineEnabled?textOutlineWidth:0 });
   const textToolRef = useRef(textTool);
   textToolRef.current = textTool;
   const edit = textTool.edit;
@@ -405,11 +464,28 @@ export function CaptureOverlay() {
   const demo = isDemoMode();
   /** Номер сессии захвата: окно живое, при каждом новом показе +1 → перезагрузка. */
   const [sessionSeq, setSessionSeq] = useState(0);
+  const pinEditorRef = useRef(pinEditor);
+  pinEditorRef.current = pinEditor;
+  const pinRect = pinEditor ? (() => {
+    if(pinEditor.imageRect){const r=pinEditor.imageRect,dpr=window.devicePixelRatio||1;return {x:r.x/dpr,y:r.y/dpr,w:r.width/dpr,h:r.height/dpr};}
+    const scale = Math.max(.01, Math.min(1, (vp.w-32)/pinEditor.width, (vp.h-210)/pinEditor.height));
+    const w = pinEditor.width*scale, h = pinEditor.height*scale;
+    return { x:(vp.w-w)/2, y:16, w,h };
+  })() : null;
+  const previousPinRect=useRef<Rect|null>(null);
+  useLayoutEffect(() => {
+    if (!pinEditor || !pinRect) return;
+    const old=previousPinRect.current;
+    if(old){scene.translate(pinRect.x-old.x,pinRect.y-old.y);textTool.translate(pinRect.x-old.x,pinRect.y-old.y);}
+    previousPinRect.current=pinRect;
+    selRef.current = pinRect; setSel(pinRect);
+    setK(pinEditor.width/pinRect.w);
+  }, [pinEditor?.width,pinEditor?.height,pinEditor?.imageRect,vp.w,vp.h]);
 
   // The native window appears transparent. Start its fade only AFTER show(),
   // never while a prewarmed WebView is still hidden.
   useEffect(() => {
-    if (demo) return;
+    if (demo || pinEditor) return;
     let dead = false;
     const un = listen<string>("snipcast://capture-shown", (event) => {
       if (!dead && event.payload === presentableImageRef.current && imgRef.current?.complete) {
@@ -418,12 +494,33 @@ export function CaptureOverlay() {
     });
     shownListenerRef.current = un;
     return () => { dead = true; void un.then((f) => f()); };
-  }, [demo]);
+  }, [demo, !!pinEditor]);
+
+  useEffect(() => {
+    if (demo || pinEditor) return;
+    let dead = false;
+    const un = listen<{ imageName: string; candidates: CaptureCandidate[] }>("snipcast://capture-candidates", ({ payload }) => {
+      if (dead || (infoRef.current && infoRef.current.imageName !== payload.imageName)) return;
+      pendingCandidatesRef.current.set(payload.imageName, mergeCandidates(pendingCandidatesRef.current.get(payload.imageName) ?? [], payload.candidates));
+      setInfo(prev => prev?.imageName === payload.imageName
+        ? { ...prev, candidates: mergeCandidates(prev.candidates ?? [], payload.candidates) } : prev);
+    });
+    candidatesListenerRef.current = un;
+    return () => { dead = true; void un.then(f => f()); };
+  }, [demo, !!pinEditor]);
 
   // Загрузка: инфо о захвате + PNG-байты + конфиг
   useEffect(() => {
     let dead = false;
     let objectUrl: string | null = null;
+
+    if (pinEditor) {
+      setInfo({ label:"pin-editor", imageName:"", x:0,y:0,width:pinEditor.width,height:pinEditor.height,scale:1 });
+      setImgUrl(pinEditor.url); setPresented(true);
+      if (demo) setCfg(DEMO_CFG);
+      else void invoke<AppConfig>("snipcast_get_config").then(c => { if (!dead) setCfg(c); }).catch(() => {});
+      return () => { dead = true; };
+    }
 
     if (demo) {
       setInfo({ label: "capture-0", imageName: "", x: 0, y: 0, width: window.innerWidth, height: window.innerHeight, scale: window.devicePixelRatio || 1 });
@@ -434,12 +531,19 @@ export function CaptureOverlay() {
 
     (async () => {
       try {
+        await candidatesListenerRef.current;
         const i = await invoke<CaptureInfo>("snipcast_capture_info");
         const buf = await invoke<ArrayBuffer>("snipcast_capture_image_data", { name: i.imageName });
         objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/png" }));
         if (dead) return;
-        setInfo(i);
-        setK(i.scale || window.devicePixelRatio || 1);
+        setInfo({ ...i, candidates: mergeCandidates(i.candidates ?? [], pendingCandidatesRef.current.get(i.imageName) ?? []) });
+        if (i.cursor) {
+          const pt = { x: (i.cursor.x-i.x) * window.innerWidth/i.width, y: (i.cursor.y-i.y) * window.innerHeight/i.height };
+          if (pt.x >= 0 && pt.y >= 0 && pt.x < window.innerWidth && pt.y < window.innerHeight) {
+            pointerRef.current = pt; setPointer(pt);
+          }
+        }
+        setK(i.width/window.innerWidth);
         setImgUrl(objectUrl);
         setLoadError("");
         // Сигнал «окно готово» отправляем не здесь, а из onLoad картинки:
@@ -463,21 +567,28 @@ export function CaptureOverlay() {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionSeq]);
+  }, [sessionSeq,pinEditor?.url,pinEditor?.width,pinEditor?.height]);
 
   // Окно оверлея переиспользуется между захватами (создаётся один раз):
   // новый захват бэкенд объявляет событием, и мы перезагружаем сессию.
   // Старое выделение/фигуры сбрасываем СРАЗУ в обработчике — до любого
   // показа окна, чтобы не мелькала рамка прошлой сессии.
   useEffect(() => {
-    if (demo) return;
+    if (demo || pinEditor) return;
     const un = listen("snipcast://capture-session", () => {
       presentationSeqRef.current += 1;
       presentableImageRef.current = null;
       readySignalRef.current = null;
       setPresented(false);
       setSel(null);
-      setDraft(null);
+      setSelecting(false);
+      setPointer(null); pointerRef.current = null;
+      setReleasePoint(null);
+      cancelAnimationFrame(pointerRafRef.current); pointerRafRef.current = 0;
+      sampleRef.current = null; setPixelSource(null);
+      setInfo(null); setDetectionMode("element"); setColorFormat("hex");
+      infoRef.current = null; pendingCandidatesRef.current.clear();
+      setDraft(null); draftRef.current=null; strokeSamples.current=[]; lastGesturePoint.current=null;
       scene.reset();
       setSelectedId(null);
       setTool(null);
@@ -498,11 +609,21 @@ export function CaptureOverlay() {
       void un.then((f) => f());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demo]);
+  }, [demo, !!pinEditor]);
 
   // Размер окна (CSS px) — выделение живёт в этих координатах
   useEffect(() => {
-    const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    const onResize = () => {
+      const next={w:window.innerWidth,h:window.innerHeight};
+      if(!pinEditorRef.current && infoRef.current){
+        const old=vpRef.current,s=physicalSelection.current,i=infoRef.current;
+        const sx=next.w/old.w,sy=next.h/old.h;
+        if(s){const resized={x:(s.x-i.x)*next.w/i.width,y:(s.y-i.y)*next.h/i.height,w:s.w*next.w/i.width,h:s.h*next.h/i.height};selRef.current=resized;renderSel(resized);}
+        setReleasePoint(p=>p?{x:p.x*sx,y:p.y*sy}:null);
+        scene.scale(sx,sy);setK(infoRef.current.width/next.w);
+      }
+      setVp(next);
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -514,6 +635,11 @@ export function CaptureOverlay() {
   };
 
   const closeCapture = useCallback(() => {
+    if (pinEditorRef.current) {
+      if (busyRef.current) return;
+      void pinEditorRef.current.onCancel().catch(e => showToast("error",String(e)));
+      return;
+    }
     if (demo) {
       console.log("[demo] snipcast_close_capture");
       return;
@@ -523,6 +649,14 @@ export function CaptureOverlay() {
   }, [demo]);
 
   const nextShapeId = () => idSeqRef.current++;
+  const startVideo=async()=>{
+    if(busyRef.current)return;const r=physicalSelection.current;if(!r)return;
+    setBusy(true);
+    try{if(demo){showToast("error","Запись видео доступна в приложении Windows");return;}
+      await invoke("snipcast_video_start",{options:{x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.w),height:Math.round(r.h),fps:videoFps,audio:videoAudio}});
+    }catch(e){showToast("error",String(e));}finally{setBusy(false);}
+  };
+  recordingAction.current=startVideo;
 
   const flattenSelection = useCallback((): string => {
     const snapshot = textToolRef.current.commit();
@@ -539,7 +673,8 @@ export function CaptureOverlay() {
     const { w, h } = vpRef.current;
     const img = imgRef.current;
     if (img && img.naturalWidth > 0) {
-      ctx.drawImage(img, 0, 0, w, h);
+      if (pinEditorRef.current) ctx.drawImage(img,r.x,r.y,r.w,r.h);
+      else ctx.drawImage(img, 0, 0, w, h);
     } else {
       ctx.fillStyle = "#8a8a96";
       ctx.fillRect(0, 0, w, h);
@@ -568,13 +703,22 @@ export function CaptureOverlay() {
         return;
       }
       await invoke("snipcast_capture_copy", { png });
-      await invoke("snipcast_close_capture");
+      if (pinEditorRef.current) showToast("ok","Скопировано");
+      else await invoke("snipcast_close_capture");
     } catch (e) {
       showToast("error", String(e));
     } finally {
       setBusy(false);
     }
   }, [busy, demo, flattenSelection]);
+
+  const applyPinAnnotations = async () => {
+    if (!pinEditor || busy) return;
+    setBusy(true);
+    try { await pinEditor.onApply(flattenSelection()); }
+    catch (e) { showToast("error",String(e)); }
+    finally { setBusy(false); }
+  };
 
   const runOcr = useCallback(
     async (opts?: { closeOnSuccess?: boolean }) => {
@@ -611,6 +755,19 @@ export function CaptureOverlay() {
     },
     [busy, demo, closeCapture],
   );
+
+  const runSum=async()=>{
+    const r=selRef.current,inf=infoRef.current;if(!r||busyRef.current)return;
+    setBusy(true);setOcrLoading(true);
+    try{
+      const text=demo?"12,50 7,25":await invoke<string>("snipcast_ocr_region",{
+        label:inf?.label??"",x:Math.max(0,Math.round(r.x*kRef.current)),y:Math.max(0,Math.round(r.y*kRef.current)),
+        width:Math.max(1,Math.round(r.w*kRef.current)),height:Math.max(1,Math.round(r.h*kRef.current))});
+      const result=sumNumbers(text);if(!result){showToast("error","Числа не найдены");return;}
+      if(demo)await navigator.clipboard.writeText(result.sum);else await invoke("snipcast_clipboard_write_text",{text:result.sum});
+      showToast("ok",`Сумма: ${result.sum}`);
+    }catch(e){showToast("error",String(e));}finally{setBusy(false);setOcrLoading(false);}
+  };
 
   const saveWithDialog = useCallback(
     async (preset?: PresetInfo) => {
@@ -650,7 +807,8 @@ export function CaptureOverlay() {
         if (!path) return;
         const png = flattenSelection();
         await invoke("snipcast_capture_save", { png, path });
-        await invoke("snipcast_close_capture");
+        if (pinEditorRef.current) showToast("ok", "Сохранено в файл");
+        else await invoke("snipcast_close_capture");
       } catch (e) {
         showToast("error", String(e));
       } finally {
@@ -675,7 +833,8 @@ export function CaptureOverlay() {
         const path = await invoke<string>("snipcast_capture_save_path", { dir: loc.path, ext });
         const png = flattenSelection();
         await invoke("snipcast_capture_save", { png, path });
-        await invoke("snipcast_close_capture");
+        if (pinEditorRef.current) showToast("ok", `Сохранено: ${loc.name}`);
+        else await invoke("snipcast_close_capture");
       } catch (e) {
         showToast("error", String(e));
       } finally {
@@ -819,6 +978,7 @@ export function CaptureOverlay() {
   );
 
   const onRootPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (pinEditor && busy) return;
     if (e.button !== 0) return;
     const t = e.target as HTMLElement;
     if (t.closest(".capture__ui")) return;
@@ -838,7 +998,7 @@ export function CaptureOverlay() {
     dragSelectionBeforeRef.current = sel;
     const s = sel;
     const handleEl = t.closest("[data-handle]") as HTMLElement | null;
-    if (s && handleEl) {
+    if (!pinEditor && s && handleEl) {
       scene.begin();
       dragRef.current = { mode: "resize", handle: handleEl.dataset.handle as HandleId, orig: s };
       return;
@@ -859,6 +1019,7 @@ export function CaptureOverlay() {
 
     const inside =
       !!s && pt.x >= s.x && pt.x <= s.x + s.w && pt.y >= s.y && pt.y <= s.y + s.h;
+    if (pinEditor && !inside) { textTool.commit(); setSelectedId(null); return; }
     if (inside && s) {
       // Верхняя фигура под курсором — выбрать и тащить (даже при активном инструменте).
       for (let i = shapes.length - 1; i >= 0; i--) {
@@ -877,8 +1038,9 @@ export function CaptureOverlay() {
         setSelectedId(null);
         if (tool === "text") { textTool.beginCreate(e); return; }
         scene.begin();
+        strokeSamples.current=[];
         dragRef.current = { mode: "draw", start: pt };
-        setDraft({ id: nextShapeId(), kind: activeDrawKind(), color: drawColor, thickness: drawThickness, p1: pt, p2: pt });
+        const initial:Shape={ id: nextShapeId(), kind: activeDrawKind(), color: drawColor, thickness: drawThickness, p1: pt, p2: pt }; draftRef.current=initial;setDraft(initial);
         return;
       }
       // Инструмент не активен: первый драг снимает выбор фигуры, дальше — рамка.
@@ -886,7 +1048,7 @@ export function CaptureOverlay() {
         setSelectedId(null);
         return;
       }
-      dragRef.current = { mode: "move", start: pt, orig: s };
+      if (!pinEditor) dragRef.current = { mode: "move", start: pt, orig: s };
       return;
     }
 
@@ -896,30 +1058,48 @@ export function CaptureOverlay() {
       setSelectedId(null);
       if (tool === "text") { textTool.beginCreate(e); return; }
       scene.begin();
+      strokeSamples.current=[];
       dragRef.current = { mode: "draw", start: pt };
-      setDraft({ id: nextShapeId(), kind: activeDrawKind(), color: drawColor, thickness: drawThickness, p1: pt, p2: pt });
+      const initial:Shape={ id: nextShapeId(), kind: activeDrawKind(), color: drawColor, thickness: drawThickness, p1: pt, p2: pt }; draftRef.current=initial;setDraft(initial);
       return;
     }
 
     // Фон: тянем новое выделение
-    dragRef.current = { mode: "new", start: pt };
+    const inf = infoRef.current;
+    const proposed = inf ? proposedRect(candidateIndexRef.current, pt, assistRef.current.mode, inf, vpRef.current) : null;
+    dragRef.current = { mode: "new", start: pt, proposed, manual: false };
+    setSelecting(true);
     setSelectedId(null);
     setDraft(null);
-    setSel({ x: pt.x, y: pt.y, w: 0, h: 0 });
+    setSel(proposed);
   };
 
   // Колесо мыши при активном инструменте — толщина линии (и кегль текста).
   // Применяем и к выбранной фигуре — как у ползунка в панели опций.
-  const onRootWheel = (e: ReactWheelEvent<HTMLDivElement>) => {
-    if (edit || (e.target as HTMLElement).closest(".capture__ui")) return;
-    if (tool === "text" || shapes.find((s) => s.id === selectedId)?.kind === "text") return;
-    if (!tool) return;
-    e.preventDefault();
+  const onRootWheel = (e: WheelEvent) => {
+    if ((e.target as HTMLElement).closest(".capture__ui") || dragRef.current || textTool.gestureRef.current || busy) return;
     const dir = e.deltaY > 0 ? -1 : e.deltaY < 0 ? 1 : 0;
     if (!dir) return;
+    const selected=scene.ref.current.find(s=>s.id===selectedIdRef.current);
+    const editing=textTool.editRef.current?.shape;
+    if (editing || tool === "text" || selected?.kind === "text") {
+      e.preventDefault();
+      const current=editing?.fontSize??(selected?.kind==="text"?selected.fontSize:textSize);
+      applyTextSize(Math.max(8,Math.min(128,current+dir))/textBaseWidth*100);
+      return;
+    }
+    if (!tool) return;
+    e.preventDefault();
     const next = Math.min(MAX_THICKNESS, Math.max(MIN_THICKNESS, drawThickness + dir));
     applyThickness(next);
   };
+  const wheelHandler=useRef(onRootWheel);wheelHandler.current=onRootWheel;
+  useEffect(()=>{
+    const root=rootRef.current;if(!root)return;
+    const wheel=(event:WheelEvent)=>wheelHandler.current(event);
+    root.addEventListener("wheel",wheel,{passive:false});
+    return()=>root.removeEventListener("wheel",wheel);
+  },[]);
 
   const onRootDoubleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
@@ -936,6 +1116,9 @@ export function CaptureOverlay() {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      pointerRef.current={x:e.clientX,y:e.clientY};
+      hintMotion.current.move?.(pointerRef.current);
+      if (!selRef.current || dragRef.current?.mode === "new") setPointer(pointerRef.current);
       // Подсветка пункта меню быстрых мест, пока кнопка удерживается
       if (holdRef.current?.fired) {
         const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-quick-idx]");
@@ -946,10 +1129,13 @@ export function CaptureOverlay() {
       const d = dragRef.current;
       if (!d) return;
       const pt = { x: e.clientX, y: e.clientY };
+      lastGesturePoint.current=pt;
       const vw = vpRef.current.w;
       const vh = vpRef.current.h;
 
       if (d.mode === "new") {
+        if (!d.manual && Math.hypot(pt.x-d.start.x, pt.y-d.start.y) <= 4) return;
+        d.manual = true;
         const r = rectFrom(d.start, pt);
         setSel({
           x: Math.max(0, r.x),
@@ -970,7 +1156,7 @@ export function CaptureOverlay() {
         return;
       }
       if (d.mode === "draw") {
-        setDraft((prev) => {
+        const update=(prev:Shape|null):Shape|null => {
           if (!prev) return prev;
           let p2 = pt;
           // Квадрат и круг рисуются с равными сторонами (по большей оси).
@@ -980,8 +1166,19 @@ export function CaptureOverlay() {
             const sy = pt.y >= prev.p1.y ? 1 : -1;
             p2 = { x: prev.p1.x + sx * m, y: prev.p1.y + sy * m };
           }
-          return { ...prev, p2 };
-        });
+          if(e.shiftKey && ["line","arrow","freehand"].includes(prev.kind)) {
+            p2=Math.abs(pt.x-prev.p1.x)>=Math.abs(pt.y-prev.p1.y)?{x:pt.x,y:prev.p1.y}:{x:prev.p1.x,y:pt.y};
+          }
+          if(prev.kind==="freehand"){
+            const samples=strokeSamples.current.splice(0);
+            const points=e.shiftKey?[prev.p1,p2]:[...(prev.points??[prev.p1]),...samples];
+            const tail=points[points.length-1];
+            if(!tail||tail.x!==p2.x||tail.y!==p2.y)points.push(p2);
+            const result={...prev,p2,points,straightPrefix:e.shiftKey?1:prev.straightPrefix};draftRef.current=result;return result;
+          }
+          const result={ ...prev, p2 };draftRef.current=result;return result;
+        };
+        const result=update(draftRef.current);draftRef.current=result;setDraft(result);
         return;
       }
       if (d.mode === "shapeMove") {
@@ -993,7 +1190,7 @@ export function CaptureOverlay() {
             const p1 = { x: d.orig.p1.x + dx, y: d.orig.p1.y + dy };
             const p2 =
               d.orig.kind === "text" ? p1 : { x: d.orig.p2.x + dx, y: d.orig.p2.y + dy };
-            return { ...s, p1, p2 };
+            return { ...s, p1, p2,...(d.orig.kind==="freehand"?{points:d.orig.points?.map(p=>({x:p.x+dx,y:p.y+dy}))}:{}) };
           }),
         );
         return;
@@ -1012,16 +1209,38 @@ export function CaptureOverlay() {
       }
     };
 
-    const onUp = () => {
+    let pending:PointerEvent|null=null;
+    const queueMove=(e:PointerEvent)=>{
+      pending=e;
+      if(dragRef.current?.mode==="draw"&&draftRef.current?.kind==="freehand"&&!e.shiftKey){
+        const samples=e.getCoalescedEvents?.()??[];
+        for(const point of samples.length?samples:[e])strokeSamples.current.push({x:point.clientX,y:point.clientY});
+      }
+      if(!pointerRafRef.current)pointerRafRef.current=requestAnimationFrame(()=>{
+        pointerRafRef.current=0;const next=pending;pending=null;if(next)onMove(next);
+      });
+    };
+    const onUp = (e: PointerEvent) => {
+      if(pending){cancelAnimationFrame(pointerRafRef.current);pointerRafRef.current=0;onMove(pending);pending=null;}
       const d = dragRef.current;
       if (!d) return;
+      if(d.mode==="draw")onMove(e);
       dragRef.current = null;
       if (d.mode === "new") {
-        const s = selRef.current;
-        if (!s || s.w < MIN_SEL || s.h < MIN_SEL) {
+        setSelecting(false);
+        // Use the release coordinates even if React has not committed the last move.
+        const manual = d.manual || Math.hypot(e.clientX-d.start.x, e.clientY-d.start.y) > 4;
+        const raw = manual ? rectFrom(d.start, { x:e.clientX, y:e.clientY }) : d.proposed;
+        const s = raw ? { x:Math.max(0,raw.x), y:Math.max(0,raw.y),
+          w:Math.max(0,Math.min(vpRef.current.w,raw.x+raw.w)-Math.max(0,raw.x)),
+          h:Math.max(0,Math.min(vpRef.current.h,raw.y+raw.h)-Math.max(0,raw.y)) } : null;
+        if (!s || s.w <= 0 || s.h <= 0 || (manual && (s.w < MIN_SEL || s.h < MIN_SEL))) {
           setSel(null);
+          selRef.current = null;
           return;
         }
+        selRef.current = s; setSel(s);
+        setReleasePoint({x:e.clientX,y:e.clientY});
         // Пресет: действие выполняется сразу после рисования новой рамки
         // (перемещение/ресайз существующей не считается).
         const preset = infoRef.current?.preset;
@@ -1031,19 +1250,21 @@ export function CaptureOverlay() {
       if (d.mode === "draw") {
         const dr = draftRef.current;
         setDraft(null);
-        if (dr && Math.hypot(dr.p2.x - dr.p1.x, dr.p2.y - dr.p1.y) >= 3) {
+        if (dr && (dr.kind==="freehand" || Math.hypot(dr.p2.x - dr.p1.x, dr.p2.y - dr.p1.y) >= 3)) {
           setShapes((prev) => [...prev, dr]);
           setSelectedId(dr.id);
         }
       }
       scene.finish();
+      pinLayoutRequest.current.run?.();
     };
 
-    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointermove", queueMove);
     window.addEventListener("pointerup", onUp);
     return () => {
-      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointermove", queueMove);
       window.removeEventListener("pointerup", onUp);
+      cancelAnimationFrame(pointerRafRef.current);
     };
   }, []);
 
@@ -1108,16 +1329,24 @@ export function CaptureOverlay() {
   // Клавиатура
   // ------------------------------------------------------------------
 
+  const keyActions=useRef({copy:runCopy,save:saveWithDialog,pin:runPin,ocr:runOcr,sum:runSum,ai:runAiAgent,video:startVideo});
+  keyActions.current={copy:runCopy,save:saveWithDialog,pin:runPin,ocr:runOcr,sum:runSum,ai:runAiAgent,video:startVideo};
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const text = textToolRef.current;
       const target = e.target as HTMLElement;
-      if (target.closest("input, textarea, select, [contenteditable=true]")) return;
+      // Text keeps its native keyboard editing. Escape on property controls
+      // (checkbox/range/number) still cancels the current editor/tool/capture.
+      if (target.closest("textarea, [contenteditable=true]") ||
+          (e.key !== "Escape" && target.closest("input, select, .snip-select"))) return;
+      if (pinEditorRef.current && busyRef.current) return;
       if (e.key === "Escape") {
         e.preventDefault();
         if (text.cancel()) return;
         if (dragRef.current) {
-          dragRef.current = null;
+          dragRef.current = null; strokeSamples.current=[]; draftRef.current=null;
+          setSelecting(false);
           scene.cancel(); setDraft(null); setSel(dragSelectionBeforeRef.current);
           return;
         }
@@ -1126,10 +1355,78 @@ export function CaptureOverlay() {
         closeCapture(); return;
       }
       if (text.editRef.current) return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault(); scene.undo(e.shiftKey);
-        if (!scene.ref.current.some((s) => s.id === selectedIdRef.current)) setSelectedId(null);
+      if(e.key==="Shift"&&dragRef.current?.mode==="draw"&&lastGesturePoint.current){
+        const p=lastGesturePoint.current;window.dispatchEvent(new PointerEvent("pointermove",{clientX:p.x,clientY:p.y,shiftKey:true}));return;
+      }
+      if(busyRef.current)return;
+      if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.code==="KeyV"&&!e.repeat&&selRef.current&&!dragRef.current&&!pinEditorRef.current&&!busyRef.current){e.preventDefault();void keyActions.current.video();return;}
+      if(infoRef.current?.videoSelection&&selRef.current&&!dragRef.current){
+        if(e.key==="Enter"){e.preventDefault();if(!e.repeat)void recordingAction.current();return;}
+        if(!["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key))return;
+      }
+      if(!pinEditorRef.current&&!dragRef.current&&!text.gestureRef.current&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.code==="KeyA"){
+        e.preventDefault();
+        const inf=infoRef.current;
+        if(!e.repeat&&inf&&imgRef.current?.complete){
+          const point=pointerRef.current??{x:vpRef.current.w/2,y:vpRef.current.h/2};
+          setSel(monitorRect(inf.monitors??[],point,inf,vpRef.current));
+          setReleasePoint(point);setSelectedId(null);setSelecting(false);
+          if(inf.preset)void runPresetActionRef.current?.(inf.preset);
+        }
         return;
+      }
+      if(selRef.current&&!dragRef.current&&!text.gestureRef.current){
+        if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.code==="KeyC") {e.preventDefault();if(!e.repeat)void keyActions.current.copy();return;}
+        if(e.key==="Enter"&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();if(!e.repeat)void keyActions.current.save();return;}
+        if(!e.ctrlKey&&!e.metaKey&&!e.altKey){
+          if(e.code==="Space"&&!pinEditorRef.current){e.preventDefault();if(!e.repeat)void keyActions.current.pin();return;}
+          const kinds:ShapeKind[]=["arrow","line","rect","freehand","text"];
+          const digit=Number(/^(?:Digit|Numpad)([1-8])$/.exec(e.code)?.[1]);
+          if(digit>=1&&digit<=5){e.preventDefault();if(!e.repeat){setTool(kinds[digit-1]!);setSelectedId(null);}return;}
+          if(digit>=6&&digit<=8&&!pinEditorRef.current){e.preventDefault();if(!e.repeat){
+            if(digit===6)void keyActions.current.ocr({closeOnSuccess:true});
+            else if(digit===7)void keyActions.current.sum();else void keyActions.current.ai();
+          }return;}
+        }
+      }
+      if(!pinEditorRef.current&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.startsWith("Arrow")){
+        e.preventDefault();
+        const dx=e.key==="ArrowLeft"?-1:e.key==="ArrowRight"?1:0,dy=e.key==="ArrowUp"?-1:e.key==="ArrowDown"?1:0;
+        if(!demo)void invoke<Pt>("snipcast_capture_move_cursor",{dx,dy}).catch(err=>showToast("error",String(err)));
+        return;
+      }
+      if ((!selRef.current || dragRef.current?.mode === "new") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          if (!dragRef.current && !e.repeat) setDetectionMode(prev => prev === "element" ? "window" : "element");
+          return;
+        }
+        if (e.key === "Shift") {
+          e.preventDefault();
+          if (!e.repeat) setColorFormat(prev => prev === "hex" ? "rgb" : "hex");
+          return;
+        }
+        if (e.code === "KeyC" && !e.repeat && sampleRef.current) {
+          e.preventDefault();
+          const pixel = sampleRef.current;
+          const value = formatPixel(pixel.r,pixel.g,pixel.b,assistRef.current.format);
+          const write = demo ? navigator.clipboard.writeText(value) : invoke("snipcast_clipboard_write_text", { text:value });
+          void write.then(() => showToast("ok",`Скопировано: ${value}`)).catch(() => showToast("error","Не удалось скопировать цвет"));
+          return;
+        }
+      }
+      if (e.ctrlKey || e.metaKey) {
+        if(dragRef.current||text.gestureRef.current||e.altKey)return;
+        // e.key зависит от раскладки (на русской Ctrl+Z даёт «я»), поэтому
+        // хоткей определяем по физической клавише e.code, с фолбэком на e.key.
+        const lower = e.key.toLowerCase();
+        const undoKey = e.code === "KeyZ" || lower === "z";
+        if (undoKey) {
+          e.preventDefault();
+          scene.undo(e.shiftKey);
+          if (!scene.ref.current.some((s) => s.id === selectedIdRef.current)) setSelectedId(null);
+          return;
+        }
       }
       const id = selectedIdRef.current;
       const sh = scene.ref.current.find((s) => s.id === id);
@@ -1147,7 +1444,12 @@ export function CaptureOverlay() {
       }
     };
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    const onKeyUp=(e:KeyboardEvent)=>{
+      if(e.key==="Shift"&&dragRef.current?.mode==="draw"&&draftRef.current?.kind!=="freehand"&&lastGesturePoint.current){const p=lastGesturePoint.current;
+        window.dispatchEvent(new PointerEvent("pointermove",{clientX:p.x,clientY:p.y,shiftKey:false}));}
+    };
+    window.addEventListener("keyup",onKeyUp,true);
+    return () => {window.removeEventListener("keydown", onKey, true);window.removeEventListener("keyup",onKeyUp,true);};
   }, [closeCapture, scene.cancel, scene.change, scene.undo]);
 
   // ------------------------------------------------------------------
@@ -1158,9 +1460,10 @@ export function CaptureOverlay() {
     const cvs = canvasRef.current;
     if (!cvs) return;
     const { w, h } = vp;
-    const kw = k || 1;
-    cvs.width = Math.max(1, Math.round(w * kw));
-    cvs.height = Math.max(1, Math.round(h * kw));
+    const kw = pinEditor ? window.devicePixelRatio || 1 : k || 1;
+    const pixelW=Math.max(1,Math.round(w*kw)),pixelH=Math.max(1,Math.round(h*kw));
+    if(cvs.width!==pixelW)cvs.width=pixelW;
+    if(cvs.height!==pixelH)cvs.height=pixelH;
     const ctx = cvs.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(kw, 0, 0, kw, 0, 0);
@@ -1171,22 +1474,25 @@ export function CaptureOverlay() {
     const visible = (s: Shape) => !(editingId != null && s.id === editingId);
     // Фигуры живут только внутри выделения (как в Snipaste); исключение —
     // момент растягивания новой рамки, чтобы клип не прыгал под курсором.
-    const r = selRef.current;
-    const draggingNew = dragRef.current?.mode === "new";
-    if (r && !draggingNew) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(r.x, r.y, r.w, r.h);
-      ctx.clip();
-      for (const s of shapes) if (visible(s)) drawShape(ctx, s, 1);
-      if (draft) drawShape(ctx, draft, 1);
-      ctx.restore();
-    } else {
-      for (const s of shapes) if (visible(s)) drawShape(ctx, s, 1);
-      if (draft) drawShape(ctx, draft, 1);
-    }
+    for (const s of shapes) if (visible(s)) drawShape(ctx, s, 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, draft, k, vp, sel, edit?.shape.id]);
+  }, [shapes, k, vp, edit?.shape.id]);
+
+  // A live stroke has its own temporary layer; committed shapes stay untouched.
+  useEffect(()=>{
+    const cvs=draftCanvasRef.current;if(!cvs||!draft)return;
+    const kw=pinEditor?window.devicePixelRatio||1:k||1;
+    const width=Math.max(1,Math.round(vp.w*kw)),height=Math.max(1,Math.round(vp.h*kw));
+    if(cvs.width!==width)cvs.width=width;if(cvs.height!==height)cvs.height=height;
+    const ctx=cvs.getContext("2d");if(!ctx)return;
+    ctx.setTransform(kw,0,0,kw,0,0);ctx.clearRect(0,0,vp.w,vp.h);drawShape(ctx,draft,1);
+    cvs.style.clipPath=canvasRef.current?.style.clipPath??"none";
+  },[draft,k,vp,!!pinEditor]);
+
+  useLayoutEffect(()=>{
+    const cvs=canvasRef.current;if(!cvs)return;
+    cvs.style.clipPath=sel&&!selecting?`inset(${sel.y}px ${Math.max(0,vp.w-sel.x-sel.w)}px ${Math.max(0,vp.h-sel.y-sel.h)}px ${sel.x}px)`:"none";
+  },[sel,selecting,vp]);
 
   // Рамка выбранной фигуры: ключевые точки
   const selectedShape = shapes.find((s) => s.id === selectedId) ?? null;
@@ -1195,20 +1501,27 @@ export function CaptureOverlay() {
   useLayoutEffect(() => {
     const el = tbRef.current;
     if (!el) return;
-    setTbSize({ w: el.offsetWidth, h: el.offsetHeight });
-  }, [sel != null, ocrLoading]);
+    const measure=()=>setTbSize(prev=>prev?.w===el.offsetWidth && prev?.h===el.offsetHeight?prev:{w:el.offsetWidth,h:el.offsetHeight});
+    measure();const observer=new ResizeObserver(measure);observer.observe(el);
+    return ()=>observer.disconnect();
+  }, [sel != null, selecting, !!pinEditor]);
 
   const place = (() => {
-    if (!sel) return null;
+    if (!sel || selecting) return null;
     // До первого измерения — оценка, чтобы панель успела отрендериться и измериться
-    const size = tbSize ?? { w: 560, h: 58 };
+    const size = tbSize ?? { w: 700, h: 58 };
+    const dpr=window.devicePixelRatio||1;
+    const raw=pinEditor?.panelBounds;
+    const bounds=raw?{x:raw.x/dpr,y:raw.y/dpr,w:raw.width/dpr,h:raw.height/dpr}:
+      info?monitorRect(info.monitors??[],releasePoint??{x:sel.x+sel.w/2,y:sel.y+sel.h/2},info,vp):{x:0,y:0,...vp};
     const margin = 8;
     let left = sel.x + sel.w / 2 - size.w / 2;
-    left = Math.max(margin, Math.min(left, vp.w - size.w - margin));
+    left = Math.max(bounds.x+margin, Math.min(left, bounds.x+bounds.w - size.w - margin));
     let top = sel.y + sel.h + margin;
-    if (top + size.h > vp.h - margin) top = sel.y - margin - size.h;
-    if (top < margin) top = margin;
-    return { left, top, right: vp.w - (left + size.w), bottom: top + size.h };
+    const reserve=pinEditor&&(tool||edit||selectedShape?.kind==="text")?optsSize.h+8:0;
+    if (top + size.h+reserve > bounds.y+bounds.h - margin) top = sel.y - margin - size.h-reserve;
+    top=Math.max(bounds.y+margin,Math.min(top,bounds.y+bounds.h-size.h-margin));
+    return { left, top, right: vp.w - (left + size.w), bottom: top + size.h,bounds };
   })();
 
   const theme = cfg ? resolveUiTheme(normalizeUiTheme(cfg.theme)) : "dark";
@@ -1222,12 +1535,78 @@ export function CaptureOverlay() {
     circle: "Круг",
     arrow: "Стрелка",
     text: "Текст",
+    freehand:"Свободное рисование",
   };
 
   const isTextContext = !!edit || selectedShape?.kind === "text" || tool === "text";
   const optsTool = isTextContext ? "text" : tool;
+  const optsRef=useRef<HTMLDivElement>(null);
+  const pinLayoutRequest=useRef({busy:false,again:false,run:null as (()=>void)|null,lastKey:""});
+  useEffect(()=>{
+    if(!pinEditor||demo||pinEditor.sessionId==null)return;
+    const sessionId=pinEditor.sessionId,revision=pinEditor.revision??0;
+    let cancelled=false;
+    void waitForPinPaint(imgRef.current).then(()=>{
+      if(!cancelled)return invoke("snipcast_pin_present",{sessionId,revision});
+    }).catch(e=>{if(!cancelled)showToast("error",String(e));});
+    return()=>{cancelled=true;};
+  },[pinEditor?.sessionId,pinEditor?.revision,demo]);
+  useLayoutEffect(()=>{
+    const el=optsRef.current;
+    if(!el){setOptsSize(prev=>prev.h?{w:0,h:0}:prev);return;}
+    const measure=()=>setOptsSize(prev=>prev.w===el.offsetWidth&&prev.h===el.offsetHeight?prev:{w:el.offsetWidth,h:el.offsetHeight});
+    measure();const observer=new ResizeObserver(measure);observer.observe(el);return()=>observer.disconnect();
+  },[optsTool]);
+  useLayoutEffect(()=>{
+    if(optsRef.current&&place){
+      const el=optsRef.current,r=el.getBoundingClientRect(),b=place.bounds;
+      el.style.right="auto";
+      el.style.left=`${Math.max(b.x+8,Math.min(vp.w-place.right-r.width,b.x+b.w-r.width-8))}px`;
+      el.style.top=`${Math.max(b.y+8,Math.min(place.bottom+8,b.y+b.h-r.height-8))}px`;
+    }
+    if(!pinEditor||demo||pinEditor.sessionId==null)return;
+    const request=pinLayoutRequest.current;
+    let frame=0;
+    const flush=()=>{
+      if(request.busy){request.again=true;return;}
+      if(dragRef.current||textToolRef.current.gestureRef.current){request.again=true;return;}
+      const target=pinEditorRef.current;if(target?.sessionId==null)return;
+      const dpr=window.devicePixelRatio||1;
+      const rects=[tbRef.current,optsRef.current,...Array.from(rootRef.current?.querySelectorAll<HTMLElement>(".capture__toast,.capture__quick,.capture__text-edit-wrap")??[])]
+        .filter(el=>!!el).map(el=>{
+          const r=el!.getBoundingClientRect();
+          // Include the full CSS shadow, not only the panel's border box.
+          const shadow=el!.matches(".capture__toolbar,.capture__opts,.capture__toast,.capture__quick");
+          const side=shadow?40:12,top=shadow?30:12,bottom=shadow?50:12;
+          return {x:Math.floor((r.x-side)*dpr),y:Math.floor((r.y-top)*dpr),width:Math.ceil((r.width+side*2)*dpr),height:Math.ceil((r.height+top+bottom)*dpr)};
+        });
+      const args={rects,sessionId:target.sessionId,revision:target.revision??0},key=JSON.stringify(args);
+      if(request.lastKey===key)return;
+      request.lastKey=key;request.busy=true;
+      void invoke<PinEditGeometry|null>("snipcast_pin_regions",args).then(geometry=>{
+        if(geometry&&pinEditorRef.current?.sessionId===geometry.sessionId)pinEditorRef.current.onLayout?.(geometry);
+      }).catch(e=>{request.lastKey="";showToast("error",String(e));}).finally(()=>{
+        request.busy=false;if(request.again){request.again=false;request.run?.();}
+      });
+    };
+    const schedule=()=>{if(!frame)frame=requestAnimationFrame(()=>{frame=0;flush();});};
+    request.run=schedule;schedule();
+    const observer=new ResizeObserver(schedule);
+    for(const el of [tbRef.current,optsRef.current,...Array.from(rootRef.current?.querySelectorAll<HTMLElement>(".capture__quick,.capture__text-edit-wrap")??[])])if(el)observer.observe(el);
+    return()=>{observer.disconnect();cancelAnimationFrame(frame);if(request.run===schedule)request.run=null;};
+  },[!!pinEditor,pinEditor?.revision,place?.left,place?.top,optsTool,optsSize,selectedId,toast?.text,quickOpen,vp,edit?.shape]);
   const activeColor = edit?.shape.color ?? selectedShape?.color ?? drawColor;
   const activeSize = edit?.shape.fontSize ?? (selectedShape?.kind === "text" ? selectedShape.fontSize : textSize);
+  const textBaseWidth=Math.max(1,sel?.w??pinRect?.w??vp.w);
+  const sizePercent=activeSize/textBaseWidth*100;
+  const textAppearance=edit?.shape??(selectedShape?.kind==="text"?selectedShape:null);
+  const outlineEnabled=textAppearance?!!textAppearance.outlineWidth:textOutlineEnabled;
+  const outlineColor=textAppearance?.outlineColor??textOutlineColor;
+  const outlineWidth=textAppearance?.outlineWidth||textOutlineWidth;
+  const applyTextAppearance=(patch:Partial<import("./shapes").TextShape>)=>{
+    if(textTool.editRef.current)textTool.update(patch);
+    else if(selectedShape?.kind==="text")scene.change(prev=>prev.map(s=>s.id===selectedShape.id&&s.kind==="text"?{...s,...patch}:s));
+  };
   const applyColor = (color: string) => {
     setDrawColor(color);
     if (textTool.editRef.current) textTool.update({ color });
@@ -1240,7 +1619,7 @@ export function CaptureOverlay() {
   };
   const applyTextSize = (v: number) => {
     if (!Number.isFinite(v)) return;
-    const fontSize = Math.max(8, Math.min(128, Math.round(v)));
+    const fontSize = Math.max(8, Math.min(128, v*textBaseWidth/100));
     setTextSize(fontSize);
     if (textTool.editRef.current) textTool.update({ fontSize });
     else if (selectedShape?.kind === "text")
@@ -1248,19 +1627,20 @@ export function CaptureOverlay() {
   };
 
   const selectedBox = selectedShape ? shapeBounds(selectedShape) : null;
-  const dim = sel
-    ? { top: { top: 0, left: 0, width: vp.w, height: Math.max(0, sel.y) },
-        bottom: { top: sel.y + sel.h, left: 0, width: vp.w, height: Math.max(0, vp.h - sel.y - sel.h) },
-        left: { top: sel.y, left: 0, width: Math.max(0, sel.x), height: sel.h },
-        right: { top: sel.y, left: sel.x + sel.w, width: Math.max(0, vp.w - sel.x - sel.w), height: sel.h } }
+  const visibleRect = sel ?? suggestion;
+  const dim = visibleRect
+    ? { top: { top: 0, left: 0, width: vp.w, height: Math.max(0, visibleRect.y) },
+        bottom: { top: visibleRect.y + visibleRect.h, left: 0, width: vp.w, height: Math.max(0, vp.h - visibleRect.y - visibleRect.h) },
+        left: { top: visibleRect.y, left: 0, width: Math.max(0, visibleRect.x), height: visibleRect.h },
+        right: { top: visibleRect.y, left: visibleRect.x + visibleRect.w, width: Math.max(0, vp.w - visibleRect.x - visibleRect.w), height: visibleRect.h } }
     : null;
 
   return (
     <div
       ref={rootRef}
-      className={`capture${presented ? " capture--presented" : ""}`}
+      className={`capture${presented ? " capture--presented" : ""}${pinEditor ? " capture--pin-editor" : ""}`}
       data-capture-theme={theme}
-      style={{ cursor: hoverText ? "move" : tool === "text" ? "text" : undefined }}
+      style={{ cursor: tool ? "crosshair" : hoverText ? "move" : undefined }}
       onPointerDown={onRootPointerDown}
       onPointerMove={(e) => {
         textTool.onPointerMove(e);
@@ -1270,18 +1650,18 @@ export function CaptureOverlay() {
           setHoverText(top?.kind === "text");
         } else setHoverText(false);
       }}
-      onPointerLeave={() => setHoverText(false)}
-      onPointerUp={textTool.onPointerUp}
+      onPointerLeave={() => { setHoverText(false); if (!dragRef.current) { pointerRef.current = null; setPointer(null); sampleRef.current = null; } }}
+      onPointerUp={e=>{textTool.onPointerUp(e);pinLayoutRequest.current.run?.();}}
       onPointerCancel={() => {
         if (textTool.gestureRef.current) textTool.cancel();
         else if (dragRef.current) {
           dragRef.current = null;
+          setSelecting(false);
           scene.cancel(); setDraft(null); setSel(dragSelectionBeforeRef.current);
         }
       }}
       onLostPointerCapture={() => { if (textTool.gestureRef.current) textTool.cancel(); }}
       onDoubleClick={onRootDoubleClick}
-      onWheel={onRootWheel}
       onContextMenu={(e) => {
         e.preventDefault();
         closeCapture();
@@ -1291,11 +1671,18 @@ export function CaptureOverlay() {
         <img
           ref={imgRef}
           className="capture__shot"
+          style={pinRect ? { left:pinRect.x, top:pinRect.y, width:pinRect.w, height:pinRect.h } : undefined}
           src={imgUrl}
           alt=""
           draggable={false}
           onLoad={(e) => {
             const el = e.currentTarget;
+            if (!pinEditor) {
+              const source = document.createElement("canvas");
+              source.width = el.naturalWidth; source.height = el.naturalHeight;
+              const context = source.getContext("2d", { willReadFrequently:true });
+              if (context) { context.drawImage(el,0,0); setPixelSource(source); }
+            }
             if (el.naturalWidth > 0 && el.clientWidth > 0) {
               setK(el.naturalWidth / el.clientWidth);
             }
@@ -1322,48 +1709,56 @@ export function CaptureOverlay() {
       )}
 
       {/* Затемнение вне выделения */}
-      {dim ? (
+      {!pinEditor && dim ? (
         <>
           <div className="capture__dim capture__dim--selection" style={dim.top} />
           <div className="capture__dim capture__dim--selection" style={dim.bottom} />
           <div className="capture__dim capture__dim--selection" style={dim.left} />
           <div className="capture__dim capture__dim--selection" style={dim.right} />
           <div className="capture__selection-reveal"
-            style={{ left: sel!.x, top: sel!.y, width: sel!.w, height: sel!.h }} />
+            style={{ left: visibleRect!.x, top: visibleRect!.y, width: visibleRect!.w, height: visibleRect!.h }} />
         </>
       ) : (
-        <div className="capture__dim capture__dim--full" />
+        pinEditor ? null : <div className="capture__dim capture__dim--full" />
       )}
 
       <canvas ref={canvasRef} className="capture__shapes" />
+      {draft?<canvas ref={draftCanvasRef} className="capture__shapes capture__shapes--draft" />:null}
 
       {/* Рамка выделения + маркеры + чип размеров */}
-      {sel ? (
+      {visibleRect ? (
         <>
           <div
-            className="capture__frame"
-            style={{ left: sel.x, top: sel.y, width: sel.w, height: sel.h }}
+            className={`capture__frame${!sel || selecting ? " capture__frame--proposed" : ""}`}
+            style={{ left: visibleRect.x, top: visibleRect.y, width: visibleRect.w, height: visibleRect.h }}
           >
-            {HANDLES.map((h) => (
+            {sel && !selecting && !pinEditor ? HANDLES.map((h) => (
               <div key={h} data-handle={h} className={`capture__handle capture__handle--${h}`} />
-            ))}
+            )) : null}
           </div>
           <div
             className="capture__dimchip"
-            style={{ left: sel.x, top: sel.y >= 36 ? sel.y - 32 : sel.y + 6 }}
+            style={{ left: visibleRect.x, top: visibleRect.y >= 36 ? visibleRect.y - 32 : visibleRect.y + 6 }}
           >
-            {Math.round(sel.w * k)} × {Math.round(sel.h * k)}
+            {Math.round(visibleRect.w * k)} × {Math.round(visibleRect.h * k)}
           </div>
         </>
-      ) : (
+      ) : null}
+
+      {!pinEditor && !sel && !selecting ? (
         <>
-          <div className="capture__hint capture__hint--top">Выделите область для снимка</div>
+          <div className="capture__hint capture__hint--top">Выберите область...</div>
           {info?.preset ? (
             <div className="capture__preset-chip">Пресет: {info.preset.title}</div>
           ) : null}
-          <div className="capture__hint capture__hint--esc">Esc — отменить</div>
         </>
-      )}
+      ) : null}
+
+      {(!sel || selecting) && pointer && pixelSource && info ? <CaptureLoupe
+        source={pixelSource} pointer={pointer} info={info} viewport={vp} format={colorFormat} onSample={onPixelSample} /> : null}
+      {!pinEditor?<CaptureShortcuts info={info} viewport={vp} session={sessionSeq} cursor={pointerRef} motion={hintMotion}
+        selected={!!sel} gesture={dragRef.current?.mode??(textTool.frame?"text":undefined)} editing={!!edit}
+        selectedShape={selectedId!=null} tool={tool} mode={detectionMode}/>:null}
 
       {/* Выбранная фигура: габарит + ключевые точки (точки — в координатах окна) */}
       {selectedShape && selectedShape.kind !== "text" && selectedBox ? (
@@ -1378,8 +1773,10 @@ export function CaptureOverlay() {
               height: selectedBox.h + 10,
             }}
           />
+          {selectedShape.kind!=="freehand" ? <>
           <div key={`shape-kp1-${selectedShape.id}`} className="capture__kp" data-kp="1" style={{ left: selectedShape.p1.x, top: selectedShape.p1.y }} />
           <div key={`shape-kp2-${selectedShape.id}`} className="capture__kp" data-kp="2" style={{ left: selectedShape.p2.x, top: selectedShape.p2.y }} />
+          </> : null}
 
         </>
       ) : null}
@@ -1392,28 +1789,46 @@ export function CaptureOverlay() {
       {/* Панель инструментов, опции инструмента, меню быстрых мест, тост */}
       <div className="capture__ui">
         {sel && place ? (
-          <div ref={tbRef} className="capture__toolbar" style={{ left: place.left, top: place.top }}>
+          <div ref={tbRef} className="capture__toolbar" style={{ left: place.left, top: place.top,maxWidth:place.bounds.w-16,flexWrap:"wrap" }}>
               {(
                 [
                   { kind: "arrow" as const, label: "Стрелка", title: "Нарисовать стрелку", icon: <IconArrow /> },
                   { kind: "line" as const, label: "Линия", title: "Нарисовать линию", icon: <IconLine /> },
                   { kind: "rect" as const, label: "Фигура", title: "Нарисовать фигуру", icon: <IconRect /> },
+                  { kind:"freehand" as const,label:"Рисование",title:"Свободное рисование",icon:<SvgIcon><path d="M4 16c4-14 3 7 8-5s1 10 8-3" fill="none" stroke="currentColor" strokeWidth="1.8"/></SvgIcon> },
                   { kind: "text" as const, label: "Текст", title: "Добавить текст", icon: <IconText /> },
                 ] as const
-              ).map((t) => (
+            ).filter(()=>!info?.videoSelection).map((t,i) => (
               <button
                 key={t.kind}
                 type="button"
-                title={t.title}
+                title={`${t.title} (${i+1})`}
+                disabled={busy}
                 className={`capture__btn${tool === t.kind ? " is-active" : ""}`}
                 onClick={() => { textTool.commit(); setSelectedId(null); setTool((prev) => (prev === t.kind ? null : t.kind)); }}
               >
                 {t.icon}
-                <span>{t.label}</span>
+                <span>{t.label}</span><kbd className="capture__tool-key">{i+1}</kbd>
               </button>
             ))}
 
-            <span className="capture__toolbar-sep" aria-hidden />
+            {!info?.videoSelection?<span className="capture__toolbar-sep" aria-hidden />:null}
+
+            {pinEditor ? <>
+              <button type="button" title="Сохранить как файл" className="capture__btn" disabled={busy} onPointerDown={onSavePointerDown} onClick={onSaveClick}>
+                <IconSave /><span>Сохранить</span><kbd className="capture__tool-key">Enter</kbd>
+              </button>
+              <button type="button" className="capture__btn" disabled={busy} onClick={() => void applyPinAnnotations()} title="Применить аннотации к закрепу">
+                <SvgIcon><path d="m5 12 4 4L19 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></SvgIcon><span>Готово</span>
+              </button>
+              <button type="button" className="capture__btn" disabled={busy} onClick={closeCapture} title="Отменить аннотирование">
+                <SvgIcon><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></SvgIcon><span>Отмена</span>
+              </button>
+            </> : info?.videoSelection ? <>
+              <div className="capture__video-config"><label>Плавность <ThemedSelect label="Частота кадров записи" value={String(videoFps)} disabled={busy} onChange={v=>setVideoFps(Number(v))} options={[{value:"15",label:"15 кадров/с"},{value:"30",label:"30 кадров/с"}]}/></label><label><input type="checkbox" checked={videoAudio} disabled={busy} onChange={e=>setVideoAudio(e.target.checked)}/>Звук системы</label></div>
+              <button type="button" className="capture__btn is-active" disabled={busy} onClick={()=>void startVideo()} title="Начать запись области"><VideoIcon name="video"/><span>Записать</span><kbd className="capture__tool-key">Enter</kbd></button>
+              <button type="button" className="capture__btn" disabled={busy} onClick={closeCapture}><VideoIcon name="close"/><span>Отмена</span><kbd className="capture__tool-key">Esc</kbd></button>
+            </> : <>
 
             <button
               type="button"
@@ -1424,8 +1839,12 @@ export function CaptureOverlay() {
             >
               <IconOcr />
               <span>{ocrLoading ? "…" : "Распознать"}</span>
+              <kbd className="capture__tool-key">6</kbd>
             </button>
 
+            <button type="button" title="Сложить распознанные числа" className="capture__btn" disabled={busy} onClick={()=>void runSum()}>
+              <SvgIcon><path d="M18 4H6l7 8-7 8h12" fill="none" stroke="currentColor" strokeWidth="1.8"/></SvgIcon><span>Сумма</span><kbd className="capture__tool-key">7</kbd>
+            </button>
             <button
               type="button"
               title="Спросить ИИ по выделенной области"
@@ -1435,10 +1854,12 @@ export function CaptureOverlay() {
             >
               <IconAi />
               <span>ИИ Агент</span>
+              <kbd className="capture__tool-key">8</kbd>
             </button>
 
             <span className="capture__toolbar-sep" aria-hidden />
 
+            <button type="button" title="Записать видео области (V)" className="capture__btn" disabled={busy} onClick={()=>void startVideo()}><VideoIcon name="video"/><span>Видео</span><kbd className="capture__tool-key">V</kbd></button>
             <button
               type="button"
               title="Сохранить как файл"
@@ -1449,6 +1870,7 @@ export function CaptureOverlay() {
             >
               <IconSave />
               <span>Сохранить</span>
+              <kbd className="capture__tool-key">Enter</kbd>
             </button>
             <button
               type="button"
@@ -1459,8 +1881,10 @@ export function CaptureOverlay() {
             >
               <IconPin />
               <span>Закрепить</span>
+              <kbd className="capture__tool-key">Пробел</kbd>
             </button>
-            <button
+            </>}
+            {!info?.videoSelection?<button
               type="button"
               title="Копировать в буфер обмена"
               className="capture__btn"
@@ -1469,12 +1893,14 @@ export function CaptureOverlay() {
             >
               <IconCopy />
               <span>Копировать</span>
-            </button>
+              <kbd className="capture__tool-key">C</kbd>
+            </button>:null}
           </div>
         ) : null}
 
         {sel && place && optsTool ? (
           <div
+            ref={optsRef}
             className="capture__opts"
             onPointerDown={(e) => { if ((e.target as HTMLElement).closest("button")) e.preventDefault(); }}
             style={{ right: place.right, top: place.bottom + 8 }}
@@ -1516,18 +1942,30 @@ export function CaptureOverlay() {
               ))}
             </div>
             <label className="capture__opts-row">
-              <span>{isTextContext ? "Кегль" : "Размер"}</span>
+              <span>Размер</span>
               <input type="range" aria-label={isTextContext ? "Размер текста" : "Толщина линии"}
-                min={isTextContext ? 8 : MIN_THICKNESS} max={isTextContext ? 128 : MAX_THICKNESS} step={1}
-                value={isTextContext ? activeSize : drawThickness}
+                min={isTextContext ? 800/textBaseWidth : MIN_THICKNESS} max={isTextContext ? 12800/textBaseWidth : MAX_THICKNESS} step={isTextContext ? .1 : 1}
+                value={isTextContext ? sizePercent : drawThickness}
                 onPointerDown={() => { if (!edit) scene.begin(); }}
                 onPointerUp={() => scene.finish()}
                 onChange={(e) => {
                   const v = Number(e.target.value);
                   if (isTextContext) applyTextSize(v); else applyThickness(v);
                 }} />
-              <span className="capture__opts-value">{isTextContext ? `${activeSize} px` : drawThickness}</span>
+              <span className="capture__opts-value">{isTextContext ? `${Number(sizePercent.toFixed(1))}%` : drawThickness}</span>
             </label>
+            {isTextContext?<>
+              <label className="capture__opts-row capture__outline-toggle"><input type="checkbox" aria-label="Обводка текста" checked={outlineEnabled}
+                onChange={e=>{setTextOutlineEnabled(e.target.checked);applyTextAppearance({outlineWidth:e.target.checked?outlineWidth:0,outlineColor});}}/><span>Обводка</span></label>
+              {outlineEnabled?<>
+                <div className="capture__opts-swatches" aria-label="Цвет обводки">{["#000000","#ffffff",...SWATCHES.filter(c=>!["#000000","#ffffff"].includes(c.toLowerCase()))].map(c=>
+                  <button key={c} type="button" aria-label={`Цвет обводки ${c}`} className={`capture__swatch${outlineColor===c?" is-active":""}`} style={{background:c}}
+                    onClick={()=>{setTextOutlineColor(c);applyTextAppearance({outlineColor:c});}}/>)}</div>
+                <label className="capture__opts-row"><span>Толщина обводки</span><input type="range" aria-label="Толщина обводки" min={1} max={12} step={1} value={outlineWidth}
+                  onPointerDown={()=>{if(!edit)scene.begin();}} onPointerUp={()=>scene.finish()}
+                  onChange={e=>{const v=Number(e.target.value);setTextOutlineWidth(v);applyTextAppearance({outlineWidth:v});}}/><span className="capture__opts-value">{outlineWidth} px</span></label>
+              </>:null}
+            </>:null}
           </div>
         ) : null}
 
@@ -1554,7 +1992,8 @@ export function CaptureOverlay() {
         ) : null}
 
         {toast ? (
-          <div className={`capture__toast capture__toast--${toast.kind}`} role="status">
+          <div className={`capture__toast capture__toast--${toast.kind}`} role="status"
+            style={pinEditor&&sel?{left:sel.x+sel.w/2,top:Math.max(sel.y+8,sel.y+sel.h-64),bottom:"auto",maxWidth:400,whiteSpace:"normal"}:undefined}>
             <span className="capture__toast-icon" aria-hidden>
               {toast.kind === "ok" ? (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none">

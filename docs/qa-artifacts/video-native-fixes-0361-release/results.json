@@ -1,0 +1,104 @@
+{
+  "idleMemory": {
+    "appWorkingSetBytes": 30822400,
+    "processTreeWorkingSetBytes": 445853696
+  },
+  "recordingMemory": {
+    "appWorkingSetBytes": 124035072,
+    "processTreeWorkingSetBytes": 646483968
+  },
+  "recording": {
+    "id": 1,
+    "phase": "editing",
+    "durationMs": 3466,
+    "bytes": 53214,
+    "width": 386,
+    "height": 202,
+    "fps": 21,
+    "audio": true,
+    "hardware": false,
+    "frames": 70,
+    "exportPercent": 0,
+    "error": ""
+  },
+  "editorMemory": {
+    "appWorkingSetBytes": 54546432,
+    "processTreeWorkingSetBytes": 588664832
+  },
+  "confirmedCropUiExport": {
+    "duration": 2.026857,
+    "width": 376,
+    "height": 202,
+    "pixel": [
+      231,
+      84,
+      145,
+      255
+    ],
+    "bottom": [
+      57,
+      217,
+      174,
+      255
+    ]
+  },
+  "mp4": {
+    "duration": 2.026857,
+    "width": 346,
+    "height": 182,
+    "pixel": [
+      231,
+      84,
+      145,
+      255
+    ],
+    "bottom": [
+      57,
+      217,
+      174,
+      255
+    ],
+    "bytes": 34626
+  },
+  "controllerExcluded": true,
+  "mp4FrameMAE": 0.446568845412776,
+  "audio": {
+    "channels": 2,
+    "duration": 1.8799773242630387,
+    "sampleRate": 44100
+  },
+  "gif": {
+    "dimensions": [
+      346,
+      182
+    ],
+    "frames": 16,
+    "loop": 0,
+    "bytes": 37109,
+    "durationMs": 2000
+  },
+  "gifFrameMAE": 4.714343941222554,
+  "cancelExport": {
+    "ok": false,
+    "error": "Сохранение отменено"
+  },
+  "pageErrors": [],
+  "version": "0.36.1",
+  "nextSelection": true,
+  "silentRecording": {
+    "id": 7,
+    "phase": "editing",
+    "durationMs": 1535,
+    "bytes": 12214,
+    "width": 386,
+    "height": 202,
+    "fps": 13,
+    "audio": false,
+    "hardware": false,
+    "frames": 20,
+    "exportPercent": 0,
+    "error": ""
+  },
+  "interfaceGifFrameMAE": 7.878464919030763,
+  "smallMp4FrameMAE": 1.2795717592592593
+}

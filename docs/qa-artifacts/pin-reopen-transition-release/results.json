@@ -1,0 +1,3027 @@
+[
+  {
+    "stage": "initial",
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "initial",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "reshown",
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "reshown-forced-frame",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "zoomed",
+    "desktopPixels": 397312,
+    "differentPixels": 0,
+    "maxError": 3,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      868,
+      624
+    ],
+    "clientRect": [
+      0,
+      0,
+      752,
+      488
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-0",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-0",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "cycle-0-reshown",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "cycle-0-zoomed",
+    "desktopPixels": 397312,
+    "differentPixels": 0,
+    "maxError": 3,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      868,
+      624
+    ],
+    "clientRect": [
+      0,
+      0,
+      752,
+      488
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 1,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 1,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-1",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 1,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-1",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 2,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 2,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      845
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      709
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-2",
+    "desktopPixels": 521896,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      845
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      709
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 2,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-2",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 3,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 3,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-3",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 3,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-3",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 4,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 4,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      892
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      756
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-4",
+    "desktopPixels": 555360,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      892
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      756
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 4,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-4",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 5,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 5,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-5",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 5,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-5",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "cycle-5-reshown",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "cycle-5-zoomed",
+    "desktopPixels": 397312,
+    "differentPixels": 0,
+    "maxError": 3,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      868,
+      624
+    ],
+    "clientRect": [
+      0,
+      0,
+      752,
+      488
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 6,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 6,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-6",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 6,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-6",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 7,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 7,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      845
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      709
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-7",
+    "desktopPixels": 521896,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      845
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      709
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 7,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-7",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 8,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 8,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-8",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 8,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-8",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 9,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 9,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      892
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      756
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-9",
+    "desktopPixels": 555360,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      892
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      756
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 9,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-9",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 10,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 10,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-10",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 10,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-10",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "cycle-10-reshown",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "cycle-10-zoomed",
+    "desktopPixels": 397312,
+    "differentPixels": 0,
+    "maxError": 3,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      868,
+      624
+    ],
+    "clientRect": [
+      0,
+      0,
+      752,
+      488
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 11,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 11,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-11",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 11,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-11",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 12,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 12,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      845
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      709
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-12",
+    "desktopPixels": 521896,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      845
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      709
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 12,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-12",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 13,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 13,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-13",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 13,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-13",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 14,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 14,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      892
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      756
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-14",
+    "desktopPixels": 555360,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      892
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      756
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 14,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-14",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 15,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 15,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-15",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 15,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-15",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "cycle-15-reshown",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "cycle-15-zoomed",
+    "desktopPixels": 397312,
+    "differentPixels": 0,
+    "maxError": 3,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      868,
+      624
+    ],
+    "clientRect": [
+      0,
+      0,
+      752,
+      488
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 16,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 16,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-16",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 16,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-16",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 17,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 17,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      845
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      709
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-17",
+    "desktopPixels": 521896,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      845
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      709
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 17,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-17",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 18,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 18,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-18",
+    "desktopPixels": 494128,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      806
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      670
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 18,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-18",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor",
+    "cycle": 19,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      702
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      566
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "options",
+    "cycle": 19,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      892
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      756
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "editor-19",
+    "desktopPixels": 555360,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      892
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      756
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin",
+    "cycle": 19,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "pin-19",
+    "desktopPixels": 336064,
+    "differentPixels": 0,
+    "maxError": 2,
+    "compositorRetries": 0,
+    "hwnd": "0xd61542",
+    "parent": "0x0",
+    "rect": [
+      116,
+      136,
+      804,
+      584
+    ],
+    "clientRect": [
+      0,
+      0,
+      688,
+      448
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "second-editor-0",
+    "desktopPixels": 359600,
+    "differentPixels": 0,
+    "maxError": 4,
+    "compositorRetries": 0,
+    "hwnd": "0x1071b8e",
+    "parent": "0x0",
+    "rect": [
+      822,
+      156,
+      1418,
+      712
+    ],
+    "clientRect": [
+      0,
+      0,
+      596,
+      556
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "second-pin-0",
+    "desktopPixels": 106624,
+    "differentPixels": 0,
+    "maxError": 1,
+    "compositorRetries": 0,
+    "hwnd": "0x1071b8e",
+    "parent": "0x0",
+    "rect": [
+      936,
+      156,
+      1304,
+      404
+    ],
+    "clientRect": [
+      0,
+      0,
+      368,
+      248
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "second-editor-1",
+    "desktopPixels": 359600,
+    "differentPixels": 0,
+    "maxError": 4,
+    "compositorRetries": 0,
+    "hwnd": "0x1071b8e",
+    "parent": "0x0",
+    "rect": [
+      822,
+      156,
+      1418,
+      712
+    ],
+    "clientRect": [
+      0,
+      0,
+      596,
+      556
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "second-pin-1",
+    "desktopPixels": 106624,
+    "differentPixels": 0,
+    "maxError": 1,
+    "compositorRetries": 0,
+    "hwnd": "0x1071b8e",
+    "parent": "0x0",
+    "rect": [
+      936,
+      156,
+      1304,
+      404
+    ],
+    "clientRect": [
+      0,
+      0,
+      368,
+      248
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "second-editor-2",
+    "desktopPixels": 359600,
+    "differentPixels": 0,
+    "maxError": 4,
+    "compositorRetries": 0,
+    "hwnd": "0x1071b8e",
+    "parent": "0x0",
+    "rect": [
+      822,
+      156,
+      1418,
+      712
+    ],
+    "clientRect": [
+      0,
+      0,
+      596,
+      556
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  },
+  {
+    "stage": "second-pin-2",
+    "desktopPixels": 106624,
+    "differentPixels": 0,
+    "maxError": 1,
+    "compositorRetries": 0,
+    "hwnd": "0x1071b8e",
+    "parent": "0x0",
+    "rect": [
+      936,
+      156,
+      1304,
+      404
+    ],
+    "clientRect": [
+      0,
+      0,
+      368,
+      248
+    ],
+    "clientOffset": [
+      0,
+      0
+    ],
+    "style": "0x94000000",
+    "exStyle": "0x40018"
+  }
+]

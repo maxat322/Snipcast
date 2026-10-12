@@ -36,11 +36,14 @@ def drag(page, start, end):
 
 
 def text_button(page):
-    return page.locator(".capture__toolbar button").nth(3)
+    return page.get_by_title("Добавить текст (5)",exact=True)
 
 
 def editor(page):
     return page.locator(".capture__text-edit")
+
+def reopen(page):
+    b=bounds(selection(page));page.mouse.dblclick(b['x']+8,b['y']+10)
 
 
 def setup(browser, dpr=1):
@@ -76,7 +79,7 @@ def create(page, text, frame=None, at=(320, 240)):
 
 
 def confirm(page):
-    page.keyboard.press("Enter")
+    page.keyboard.press("Control+Enter")
     assert editor(page).count() == 0
     assert selection(page).count() == 1
     assert "is-active" not in (text_button(page).get_attribute("class") or "")
@@ -164,19 +167,21 @@ def test_free_and_keyboard(browser):
     page.keyboard.press("ArrowRight")
     page.keyboard.press("Shift+ArrowDown")
     moved = bounds(selection(page))
-    near(moved["x"], frame["x"] + 1)
-    near(moved["y"], frame["y"] + 10)
+    # Capture arrows now move the system cursor, not a selected annotation.
+    near(moved["x"], frame["x"])
+    near(moved["y"], frame["y"])
     page.keyboard.press("Control+z")
-    near(bounds(selection(page))["y"], frame["y"])
+    assert selection(page).count()==0
     page.keyboard.press("Control+Shift+z")
+    page.mouse.click(frame["x"]+10,frame["y"]+12)
     near(bounds(selection(page))["y"], moved["y"])
-    page.keyboard.press("Enter")
+    page.mouse.dblclick(frame["x"]+10,frame["y"]+12)
     assert editor(page).input_value().startswith("Свободный текст")
     editor(page).fill("Отменённая правка")
     page.keyboard.press("Escape")
-    page.keyboard.press("Enter")
+    page.mouse.dblclick(frame["x"]+10,frame["y"]+12)
     assert editor(page).input_value().startswith("Свободный текст")
-    page.keyboard.press("Enter")
+    page.keyboard.press("Control+Enter")
     page.keyboard.press("Delete")
     assert selection(page).count() == 0
     page.keyboard.press("Control+z")
@@ -241,7 +246,7 @@ def test_properties_focus_and_move(browser):
     assert editor(page).count() == 1
     near(float(editor(page).evaluate("el => parseFloat(getComputedStyle(el).fontSize)")), 23)
     editor(page).focus()
-    page.keyboard.press("Enter")
+    page.keyboard.press("Control+Enter")
     old = bounds(selection(page))
     drag(page, (old["x"] + 15, old["y"] + 10), (old["x"] + 75, old["y"] + 60))
     moved = bounds(selection(page))
@@ -253,9 +258,9 @@ def test_properties_focus_and_move(browser):
     near(float(editor(page).evaluate("el => parseFloat(getComputedStyle(el).fontSize)")), 23)
     page.keyboard.press("Escape")
     # Explicit empty submission removes existing text; empty/cancelled creation leaves no object.
-    page.keyboard.press("Enter")
+    reopen(page)
     editor(page).fill("")
-    page.keyboard.press("Enter")
+    page.keyboard.press("Control+Enter")
     assert selection(page).count() == 0
     text_button(page).click()
     page.mouse.click(600, 400)
@@ -275,7 +280,7 @@ def test_native_undo_ime_and_frame_conversion(browser):
     page.keyboard.press("Control+Shift+z")
     assert editor(page).input_value() == "native undo"
     editor(page).dispatch_event("compositionstart")
-    page.keyboard.press("Enter")
+    page.keyboard.press("Control+Enter")
     assert editor(page).count() == 1
     editor(page).dispatch_event("compositionend")
     editor(page).fill("Свободный текст для переноса")
@@ -284,7 +289,7 @@ def test_native_undo_ime_and_frame_conversion(browser):
     b = bounds(page.locator('[data-tsize="e"]'))
     drag(page, (b["x"] + 5, b["y"] + 5), (b["x"] - 80, b["y"] + 5))
     assert selection(page).get_attribute("data-text-mode") == "frame"
-    page.keyboard.press("Enter")
+    reopen(page)
     assert editor(page).evaluate("el => getComputedStyle(el).fontSize") == "22px"
     assert editor(page).input_value() == "Свободный текст для переноса"
     assert not errors, errors
@@ -333,7 +338,7 @@ def test_editing_resize_threshold_and_outside_commit(browser):
     # Height can shrink to the text but never clips it.
     handle = bounds(page.locator('[data-tsize="s"]'))
     drag(page, (handle["x"] + 5, handle["y"] + 5), (handle["x"] + 5, after["y"] + 5))
-    page.keyboard.press("Enter")
+    reopen(page)
     minimum = native_layout(page, editor(page).input_value(), bounds(editor(page))["width"])
     near(bounds(editor(page))["height"], minimum["contentHeight"], .05)
     assert editor(page).evaluate("el => el.scrollHeight <= el.clientHeight + 1")

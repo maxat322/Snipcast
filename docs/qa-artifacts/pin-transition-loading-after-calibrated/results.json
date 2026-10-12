@@ -1,0 +1,162 @@
+[
+  {
+    "variant": 0,
+    "cycle": 0,
+    "frames": 56,
+    "maxError": 4,
+    "badFrames": 0,
+    "durationMs": 1375.2
+  },
+  {
+    "variant": 0,
+    "cycle": 1,
+    "frames": 52,
+    "maxError": 4,
+    "badFrames": 0,
+    "durationMs": 1325.3
+  },
+  {
+    "variant": 0,
+    "cycle": 2,
+    "frames": 54,
+    "maxError": 4,
+    "badFrames": 0,
+    "durationMs": 1427.9
+  },
+  {
+    "variant": 0,
+    "cycle": 3,
+    "frames": 50,
+    "maxError": 4,
+    "badFrames": 0,
+    "durationMs": 1315.9
+  },
+  {
+    "variant": 0,
+    "cycle": 4,
+    "frames": 46,
+    "maxError": 4,
+    "badFrames": 0,
+    "durationMs": 1204.5
+  },
+  {
+    "variant": 0,
+    "cycle": 5,
+    "frames": 53,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1388.6
+  },
+  {
+    "variant": 0,
+    "cycle": 6,
+    "frames": 50,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1269.2
+  },
+  {
+    "variant": 0,
+    "cycle": 7,
+    "frames": 52,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1298.4
+  },
+  {
+    "variant": 0,
+    "cycle": 8,
+    "frames": 44,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1148.2
+  },
+  {
+    "variant": 0,
+    "cycle": 9,
+    "frames": 50,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1295.6
+  },
+  {
+    "variant": 1,
+    "cycle": 0,
+    "frames": 44,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1189.2
+  },
+  {
+    "variant": 1,
+    "cycle": 1,
+    "frames": 42,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1167.2
+  },
+  {
+    "variant": 1,
+    "cycle": 2,
+    "frames": 40,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1042.3
+  },
+  {
+    "variant": 1,
+    "cycle": 3,
+    "frames": 46,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1186.9
+  },
+  {
+    "variant": 1,
+    "cycle": 4,
+    "frames": 46,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1206.7
+  },
+  {
+    "variant": 1,
+    "cycle": 5,
+    "frames": 47,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1276.6
+  },
+  {
+    "variant": 1,
+    "cycle": 6,
+    "frames": 42,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1057.2
+  },
+  {
+    "variant": 1,
+    "cycle": 7,
+    "frames": 43,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1148.4
+  },
+  {
+    "variant": 1,
+    "cycle": 8,
+    "frames": 46,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1175.5
+  },
+  {
+    "variant": 1,
+    "cycle": 9,
+    "frames": 45,
+    "maxError": 1,
+    "badFrames": 0,
+    "durationMs": 1150.0
+  }
+]

@@ -15,7 +15,8 @@ type Gesture = {
   | { mode: "resize"; original: TextShape; handle: TextHandle; editing: boolean }
 );
 type Options = { scene: AnnotationScene; select: (id: number | null) => void;
-  leaveTool: () => void; nextId: () => number; color: string; fontSize: number };
+  leaveTool: () => void; nextId: () => number; color: string; fontSize: number;
+  outlineColor?: string; outlineWidth?: number };
 const point = (e: { clientX: number; clientY: number }): Pt => ({ x: e.clientX, y: e.clientY });
 
 export function useTextTool(options: Options) {
@@ -78,10 +79,10 @@ export function useTextTool(options: Options) {
     gesture.owner.setPointerCapture(gesture.pointerId);
   }, []);
   const beginCreate = useCallback((e: React.PointerEvent<HTMLElement>) => {
-    const { nextId, color, fontSize, select } = optionsRef.current;
+    const { nextId, color, fontSize, select, outlineColor, outlineWidth } = optionsRef.current;
     const p1 = point(e);
     const seed: TextShape = { id: nextId(), kind: "text", color, fontSize, p1, p2: p1,
-      text: "", textMode: "auto", width: 0, minHeight: 0 };
+      text: "", textMode: "auto", width: 0, minHeight: 0, outlineColor, outlineWidth };
     select(null);
     capture({ mode: "create", seed, start: p1, latest: p1, moved: false,
       pointerId: e.pointerId, owner: e.currentTarget });
@@ -132,7 +133,12 @@ export function useTextTool(options: Options) {
     } else if (!(g.mode === "resize" && g.editing)) optionsRef.current.scene.finish();
   }, [onPointerMove, release, open]);
   const reset = useCallback(() => { release(); setFrame(null); setEdit(null); }, [release, setEdit]);
+  const translate=useCallback((dx:number,dy:number)=>{
+    const session=editRef.current;if(!session||(!dx&&!dy))return;
+    const convert=(s:TextShape)=>({...s,p1:{x:s.p1.x+dx,y:s.p1.y+dy},p2:{x:s.p2.x+dx,y:s.p2.y+dy}});
+    setEdit({...session,shape:convert(session.shape),original:session.original?convert(session.original):null});
+  },[setEdit]);
   return { edit, editRef, frame, gestureRef, update, open, commit, cancel, reset,
-    beginCreate, beginMove, beginResize, onPointerMove, onPointerUp };
+    beginCreate, beginMove, beginResize, onPointerMove, onPointerUp,translate };
 }
 export type TextTool = ReturnType<typeof useTextTool>;

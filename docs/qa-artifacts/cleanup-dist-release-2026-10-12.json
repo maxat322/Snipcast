@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-12",
+  "beforeBytes": 930198792,
+  "afterBytes": 17427022.0,
+  "preservedEvidenceFiles": 82,
+  "preservedEvidenceBytes": 2393794,
+  "preservedQaScriptBytes": 6717,
+  "freedBytes": 910371259.0,
+  "freedMiB": 868.2,
+  "remainingFiles": [
+    "snipcast.exe",
+    "snipcast.exe.sha256"
+  ],
+  "sha256": "74c7d66d0939472461c5c16ed5e982df3b7eced6f462db85930e2cdd47463738",
+  "runningPid": 59416,
+  "runningVersion": "0.36.4",
+  "runningExe": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\snipcast.exe",
+  "failures": []
+}

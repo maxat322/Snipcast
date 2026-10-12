@@ -1,0 +1,18 @@
+{
+  "trimHandleWidth": 16,
+  "qa": "video-native-ux-0364-win32-verified/results.json",
+  "sha256": "74c7d66d0939472461c5c16ed5e982df3b7eced6f462db85930e2cdd47463738",
+  "version": "0.36.4",
+  "bytes": 17426944,
+  "file": "../../dist-release/snipcast.exe",
+  "checks": [
+    "TypeScript/Vite build",
+    "cargo check --release",
+    "cargo test --release --lib: 19 passed",
+    "native Windows desktop corners: both themes, both windows, resize edge",
+    "native Win32 mouse trim: cursor hidden/restore and decoded boundary frames",
+    "MP4/AAC/GIF export and full-frame comparisons",
+    "save/cancel/error/quick-save flows"
+  ],
+  "trimHandleHeight": 56
+}

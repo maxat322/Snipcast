@@ -1,0 +1,16 @@
+{
+  "version": "0.36.0",
+  "bytes": 17425920,
+  "sha256": "bbc0c703fe0e9261dc03d181aade9741cd8f92ae36a0dc42f9174e248805fad8",
+  "previous": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\snipcast.previous-0.35.3-before-video-20261011-120818.exe",
+  "previousSha256": "c41a8ceaa0cd9973c984150cdec3e30096398a7a8b6daf21ddde5f30b2b0b1b7",
+  "frontend": "index-Bv5qs3F7.js",
+  "css": "index-BHoqUhFH.css",
+  "latestCheckReport": "docs/qa-0.36.0-video.md",
+  "nativeQAResults": "dist-release/video-native-release/results.json",
+  "nativeQAIdentifier": "com.snipcast.video-qa",
+  "identifier": "com.snipcast.app",
+  "sourceCommitted": false,
+  "githubPublished": false,
+  "upstreamWcapCommit": "aa25ccb806d7a6e1c0bfdcca863aabcd8e9badfa"
+}

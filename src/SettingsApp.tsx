@@ -582,10 +582,17 @@ export function SettingsApp() {
         // из скриптов (POST /preset) не теряли пресет при смене id.
         if ("screenshotPresets" in patch) {
           const saved = await invoke<AppConfig>("snipcast_get_config");
+          const submitted = JSON.stringify(next.screenshotPresets);
+          // A later edit may already be pending while the native save responds.
+          // Only reconcile the snapshot that was actually submitted.
           setConfig((prev) =>
-            prev ? { ...prev, screenshotPresets: saved.screenshotPresets } : prev,
+            prev && JSON.stringify(prev.screenshotPresets) === submitted
+              ? { ...prev, screenshotPresets: saved.screenshotPresets }
+              : prev,
           );
-          setPresetsDraft(saved.screenshotPresets);
+          setPresetsDraft((prev) =>
+            JSON.stringify(prev) === submitted ? saved.screenshotPresets : prev,
+          );
         }
       } catch (e) {
         showError(e);
@@ -751,13 +758,17 @@ export function SettingsApp() {
     setUpdateStage("check");
     setUpdateState("installing");
     try {
-      await invoke("snipcast_install_update");
+      await invoke("snipcast_install_update", { expectedVersion: updateInfo?.latestVersion });
       // Обычно сюда не возвращаемся: приложение перезапускается само.
     } catch (e) {
       setUpdateError(String(e));
-      setUpdateState("error");
+      const refreshed = await invoke<UpdateInfo | null>("snipcast_update_notice_info").catch(() => null);
+      if (refreshed && refreshed.latestVersion !== updateInfo?.latestVersion) {
+        setUpdateInfo(refreshed);
+        setUpdateState(refreshed.available ? "available" : "uptodate");
+      } else setUpdateState("error");
     }
-  }, []);
+  }, [updateInfo?.latestVersion]);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -1154,10 +1165,10 @@ export function SettingsApp() {
 
   const addPreset = () => {
     if (presetsDraft.length >= MAX_SCREENSHOT_PRESETS) return;
-    // id="" — бэкенд присвоит постоянный id при сохранении конфига.
+    // Keep identity stable even if the user edits before the first autosave.
     setPresetsDraft((prev) => [
       ...prev,
-      { id: "", title: "Новый пресет", hotkey: "", dir: "", fileTemplate: "", action: "save", select: true },
+      { id: crypto.randomUUID(), title: "Новый пресет", hotkey: "", dir: "", fileTemplate: "", action: "save", select: true },
     ]);
   };
 

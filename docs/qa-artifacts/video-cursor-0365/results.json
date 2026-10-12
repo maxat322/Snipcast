@@ -1,0 +1,210 @@
+{
+  "idleMemory": {
+    "appWorkingSetBytes": 33439744,
+    "processTreeWorkingSetBytes": 469110784
+  },
+  "recordPanelPosition": {
+    "x": 810,
+    "y": 972
+  },
+  "globalRecordingKeys": true,
+  "recordingMemory": {
+    "appWorkingSetBytes": 127090688,
+    "processTreeWorkingSetBytes": 676253696
+  },
+  "controller-darkCornerPixels": [
+    [
+      78,
+      216,
+      177
+    ],
+    [
+      78,
+      216,
+      177
+    ],
+    [
+      78,
+      216,
+      177
+    ],
+    [
+      78,
+      216,
+      177
+    ]
+  ],
+  "controller-lightCornerPixels": [
+    [
+      78,
+      216,
+      177
+    ],
+    [
+      78,
+      216,
+      177
+    ],
+    [
+      78,
+      216,
+      177
+    ],
+    [
+      78,
+      216,
+      177
+    ]
+  ],
+  "recording": {
+    "id": 1,
+    "phase": "editing",
+    "durationMs": 3425,
+    "bytes": 53041,
+    "width": 386,
+    "height": 202,
+    "fps": 21,
+    "audio": true,
+    "hardware": false,
+    "frames": 69,
+    "exportPercent": 0,
+    "error": ""
+  },
+  "recordingKeysReleased": true,
+  "editorMemory": {
+    "appWorkingSetBytes": 59887616,
+    "processTreeWorkingSetBytes": 612659200
+  },
+  "themedDropdowns": true,
+  "editor-resized-darkCornerPixels": [
+    [
+      228,
+      85,
+      145
+    ],
+    [
+      228,
+      85,
+      145
+    ],
+    [
+      78,
+      216,
+      177
+    ],
+    [
+      78,
+      216,
+      177
+    ]
+  ],
+  "editor-resized-lightCornerPixels": [
+    [
+      228,
+      85,
+      145
+    ],
+    [
+      228,
+      85,
+      145
+    ],
+    [
+      78,
+      216,
+      177
+    ],
+    [
+      78,
+      216,
+      177
+    ]
+  ],
+  "nativeRoundedCorners": true,
+  "editorCapturable": true,
+  "trimHandleGeometry": true,
+  "playheadHiddenWhileTrimming": true,
+  "playheadPreservedAfterTrim": true,
+  "playbackResumesAtSavedCursor": true,
+  "playbackOutsideSelectionStartsAtBeginning": true,
+  "cropResizeCursors": true,
+  "mp4": {
+    "duration": 2.022889,
+    "width": 346,
+    "height": 182,
+    "pixel": [
+      229,
+      85,
+      145,
+      255
+    ],
+    "bottom": [
+      77,
+      216,
+      176,
+      255
+    ],
+    "bytes": 37882
+  },
+  "controllerExcluded": true,
+  "mp4FrameMAE": 0.3704291854580872,
+  "audio": {
+    "channels": 2,
+    "duration": 1.9069375,
+    "sampleRate": 48000
+  },
+  "gif": {
+    "dimensions": [
+      346,
+      182
+    ],
+    "frames": 20,
+    "loop": 0,
+    "bytes": 46807,
+    "durationMs": 2000
+  },
+  "gifFrameMAE": 4.964677422769908,
+  "cancelExport": {
+    "ok": false,
+    "error": "Сохранение отменено"
+  },
+  "pageErrors": [],
+  "version": "0.36.5",
+  "editorClosedAfterSave": true,
+  "confirmedCropUiExport": {
+    "duration": 2.022889,
+    "width": 376,
+    "height": 202,
+    "pixel": [
+      229,
+      85,
+      145,
+      255
+    ],
+    "bottom": [
+      77,
+      216,
+      176,
+      255
+    ]
+  },
+  "nextSelection": true,
+  "silentRecording": {
+    "id": 7,
+    "phase": "editing",
+    "durationMs": 1629,
+    "bytes": 15396,
+    "width": 386,
+    "height": 202,
+    "fps": 21,
+    "audio": false,
+    "hardware": false,
+    "frames": 33,
+    "exportPercent": 0,
+    "error": ""
+  },
+  "interfaceGifFrameMAE": 8.008943381384771,
+  "smallMp4FrameMAE": 1.2795717592592593,
+  "quickSaveClosedEditor": true,
+  "quickSaveFile": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\.qa-work\\video-native-cursor-0365-verified\\quick-saves\\Video 2026-10-12_15-24-00 2.gif"
+}

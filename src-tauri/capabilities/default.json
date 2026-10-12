@@ -8,7 +8,10 @@
     "aiagent",
     "capture-*",
     "pin-*",
-    "pinmenu"
+    "pinmenu",
+    "update-notice",
+    "video-control",
+    "video-editor"
   ],
   "permissions": [
     "core:default",

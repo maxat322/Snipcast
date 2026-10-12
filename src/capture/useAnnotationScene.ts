@@ -44,6 +44,23 @@ export function useAnnotationScene() {
   const reset = useCallback(() => {
     transaction.current = null; past.current = []; future.current = []; setShapes([]);
   }, [setShapes]);
-  return { shapes, ref, setShapes, begin, finish, cancel, change, undo, reset };
+  const scale=useCallback((sx:number,sy:number)=>{
+    if(sx===1&&sy===1)return;
+    const convert=(items:Shape[])=>items.map(s=>{
+      const p1={x:s.p1.x*sx,y:s.p1.y*sy},p2={x:s.p2.x*sx,y:s.p2.y*sy};
+      return s.kind==="text"?{...s,p1,p2,width:s.width*sx,minHeight:s.minHeight*sy,fontSize:s.fontSize*sx,outlineWidth:(s.outlineWidth??0)*sx}:
+        {...s,p1,p2,thickness:s.thickness*sx,points:s.points?.map(p=>({x:p.x*sx,y:p.y*sy}))};
+    });
+    past.current=past.current.map(convert);future.current=future.current.map(convert);
+    if(transaction.current)transaction.current=convert(transaction.current);setShapes(convert(ref.current));
+  },[setShapes]);
+  const translate=useCallback((dx:number,dy:number)=>{
+    if(!dx&&!dy)return;
+    const convert=(items:Shape[])=>items.map(s=>({...s,p1:{x:s.p1.x+dx,y:s.p1.y+dy},p2:{x:s.p2.x+dx,y:s.p2.y+dy},
+      ...(s.kind==="freehand"?{points:s.points?.map(p=>({x:p.x+dx,y:p.y+dy}))}:{})}));
+    past.current=past.current.map(convert);future.current=future.current.map(convert);
+    if(transaction.current)transaction.current=convert(transaction.current);setShapes(convert(ref.current));
+  },[setShapes]);
+  return { shapes, ref, setShapes, begin, finish, cancel, change, undo, reset,scale,translate };
 }
 export type AnnotationScene = ReturnType<typeof useAnnotationScene>;

@@ -17,7 +17,7 @@ html.pin-root body,
 html.pin-root #root {
   border-radius: 0;
   clip-path: none;
-  background: #1b1b1f;
+  background: transparent;
 }
 
 .capture {
@@ -114,6 +114,43 @@ html.pin-root #root {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
   animation: capture-selection-in 160ms ease-out both;
 }
+
+.capture__frame--proposed { pointer-events: none; animation: none; }
+
+.capture__loupe, .capture__shortcuts {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  border: 1px solid #3a3a44;
+  border-radius: 12px;
+  background: #1b1b1f;
+  color: #e8e8ec;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.capture__loupe { width: 224px; max-width: calc(100vw - 16px); overflow: hidden; }
+.capture__loupe-image { position: relative; width: 120px; height: 120px; margin: 10px auto; background: #31313a; }
+.capture__loupe-image canvas { display: block; image-rendering: pixelated; }
+.capture__loupe-grid { position: absolute; inset: 0; background-image: linear-gradient(to right,rgba(255,255,255,.12) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.12) 1px,transparent 1px); background-size: 8px 8px; }
+.capture__loupe-centre { position: absolute; left: 56px; top: 56px; width: 8px; height: 8px; box-sizing: border-box; border: 1px solid #fff; outline: 2px solid #5164f2; box-shadow: 0 0 0 3px rgba(0,0,0,.7); }
+.capture__loupe-panel { border-top: 1px solid #3a3a44; padding: 8px 10px; }
+.capture__loupe-coordinates, .capture__loupe-color { font-family: "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+.capture__loupe-coordinates { display: flex; gap: 8px; color: #aeb0be; }
+.capture__loupe-color { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; white-space: nowrap; }
+.capture__loupe-color i { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(128,128,128,.6); flex: none; }
+.capture__loupe-shortcuts > div { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.capture__shortcuts { left: 16px; bottom: 16px; padding: 10px 12px; max-width: calc(100vw - 32px); box-sizing: border-box; overflow: hidden; }
+.capture__shortcuts > div { display: flex; align-items: center; gap: 8px; min-height: var(--hint-row-height, 24px); }
+.capture__shortcuts strong { color: #a6afff; font-size: 11px; font-weight: 500; padding: 1px 6px; background: rgba(81,100,242,.16); border-radius: 5px; }
+.capture__shortcuts kbd, .capture__loupe-shortcuts kbd { font: inherit; border: 1px solid #484852; border-radius: 4px; padding: 0 4px; color: #e8e8ec; }
+.capture[data-capture-theme="light"] .capture__loupe,
+.capture[data-capture-theme="light"] .capture__shortcuts { background: #f8f9fc; border-color: #ccd3de; color: #2c3544; box-shadow: 0 8px 24px rgba(0,0,0,.16); }
+.capture[data-capture-theme="light"] .capture__loupe-panel { border-color: #ccd3de; }
+.capture[data-capture-theme="light"] .capture__loupe-coordinates { color: #586477; }
+.capture[data-capture-theme="light"] .capture__shortcuts kbd,
+.capture[data-capture-theme="light"] .capture__loupe-shortcuts kbd { color: #2c3544; border-color: #ccd3de; }
+.capture[data-capture-theme="light"] .capture__shortcuts strong { color: #4354ce; }
 
 .capture__handle {
   position: absolute;
@@ -379,7 +416,7 @@ html.pin-root #root {
 .capture__toolbar {
   position: absolute;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 2px;
   padding: 6px 8px;
   border-radius: 12px;
@@ -394,6 +431,8 @@ html.pin-root #root {
   align-items: center;
   gap: 2px;
   min-width: 54px;
+  min-height: 65px;
+  justify-content: flex-start;
   padding: 6px 8px 5px;
   border: none;
   border-radius: 9px;
@@ -654,6 +693,19 @@ html.pin-root #root {
   color: #31409e;
 }
 
+.capture[data-capture-theme="light"] .capture__shape-btn {
+  color: #2c3544;
+}
+
+.capture[data-capture-theme="light"] .capture__shape-btn:hover {
+  background: rgba(81, 100, 242, 0.12);
+  color: #31409e;
+}
+
+.capture[data-capture-theme="light"] .capture__shape-btn.is-active {
+  color: #31409e;
+}
+
 .capture[data-capture-theme="light"] .capture__toolbar-sep {
   background: #ccd3de;
 }
@@ -677,6 +729,22 @@ html.pin-root #root {
 /* ------------------------------------------------------------------ */
 /* Окно закрепа */
 /* ------------------------------------------------------------------ */
+
+.capture--pin-editor { background: transparent; cursor: default; }
+.capture--pin-editor[data-capture-theme="light"] { background: transparent; }
+.capture--pin-editor .capture__shot { box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+.pin--selected .pin__shot { box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+.capture__tool-key { font: inherit; font-size: 10px; line-height: 16px; min-width: 18px; padding: 0 4px; margin-top: 3px; text-align: center; border: 1px solid #484852; border-radius: 4px; color: #aeb0be; box-sizing: border-box; }
+.capture[data-capture-theme="light"] .capture__tool-key { color: #586477; border-color: #ccd3de; }
+.capture__outline-toggle { justify-content: flex-start; }
+.capture__outline-toggle input { accent-color: #5164f2; }
+.capture--pin-editor .capture__shot { inset: auto; }
+.capture--pin-editor .capture__frame { pointer-events: none; border-width: 1px; }
+.capture--pin-editor .capture__dimchip { display: none; }
+.pin__menu { position: absolute; z-index: 10; top: 12px; right: 12px; width: 224px; }
+.pin__menu .pinmenu { width: 100%; height: auto; border: 1px solid #3a3a44; border-radius: 10px; }
+.pin__error, .pinmenu__error { padding: 8px; font-size: 12px; color: #ff7d72; }
+.pin__error { position: absolute; bottom: 8px; left: 8px; background: #1b1b1f; border-radius: 8px; }
 
 .pin {
   position: relative;
@@ -716,18 +784,6 @@ html.pin-root #root {
   font-size: 15px;
 }
 
-.pin__stub {
-  width: 100%;
-  height: 100%;
-  background: repeating-linear-gradient(
-    45deg,
-    #26262e,
-    #26262e 12px,
-    #2e2e38 12px,
-    #2e2e38 24px
-  );
-}
-
 /* Курсоры растягивания у краёв и углов */
 .pin--edge-n,
 .pin--edge-s {
@@ -751,6 +807,7 @@ html.pin-root #root {
 
 /* Окно контекстного меню закрепа (отдельное, поверх всего) */
 .pinmenu {
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -772,7 +829,9 @@ html.pin-root #root {
 }
 
 .pinmenu__item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   padding: 8px 11px;
   border: 0;
@@ -788,3 +847,5 @@ html.pin-root #root {
 .pinmenu__item:hover {
   background: rgba(81, 100, 242, 0.16);
 }
+
+.pinmenu__item svg { flex-shrink: 0; color: #aeb0be; }

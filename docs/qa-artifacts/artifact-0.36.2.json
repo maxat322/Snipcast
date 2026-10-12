@@ -1,0 +1,24 @@
+{
+  "version": "0.36.2",
+  "bytes": 17417216,
+  "deltaBytes": -9728,
+  "sha256": "32b679a7a3c866e42c11a67d254691ed75975fb7163edce9b2a86a421fc61d6d",
+  "fileVersion": "0.36.2",
+  "productVersion": "0.36.2",
+  "previous": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\snipcast.previous-0.36.1-before-video-ui-20261012-104331.exe",
+  "previousSha256": "e9656f8e24755a7da4c3d371b2cce7696883b018cfa82a1ba9b0dfa9dfcb6362",
+  "primaryUpdated": true,
+  "primaryIssue": "",
+  "frontend": "index-BT25ZCMV.js",
+  "css": "index-CBgT-U3J.css",
+  "latestCheckReport": "docs/qa-0.36.2-video.md",
+  "nativeQAResults": [
+    "dist-release/video-native-ux-0362-verified-release/results.json",
+    "dist-release/video-native-ux-0362-shortcuts-release/results.json"
+  ],
+  "identifier": "com.snipcast.app",
+  "nativeQAIdentifier": "com.snipcast.video-qa",
+  "sourceCommitted": false,
+  "githubPublished": false,
+  "userProcessPreserved": true
+}

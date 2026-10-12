@@ -5,9 +5,10 @@ import type { TextShape } from "./shapes";
 
 export function TextFrame({ shape, tool, editing = false }: { shape: TextShape; tool: TextTool; editing?: boolean }) {
   const { w, h } = layoutText(shape);
+  const pad=shape.outlineWidth??0;
   return <div className={`capture__text-selection${editing ? " is-editing" : ""}`}
     data-text-id={shape.id} data-text-mode={shape.textMode}
-    style={{ left: editing ? 0 : shape.p1.x, top: editing ? 0 : shape.p1.y, width: w, height: h }}>
+    style={{ left: (editing ? 0 : shape.p1.x)-pad, top: (editing ? 0 : shape.p1.y)-pad, width: w+pad*2, height: h+pad*2 }}>
     {TEXT_HANDLES.map((handle) => <div key={handle}
       className={`capture__text-handle capture__text-handle--${handle}`}
       data-tsize={handle} title="Изменить границы текста"
@@ -65,7 +66,9 @@ export function TextEditor({ tool }: { tool: TextTool }) {
       wrap={s.textMode === "frame" ? "soft" : "off"}
       style={{ width: layout.w, height: layout.h, color: s.color, fontSize: s.fontSize,
         fontFamily: TEXT_FONT, lineHeight: TEXT_LINE_HEIGHT,
-        whiteSpace: s.textMode === "frame" ? "pre-wrap" : "pre" }}
+        whiteSpace: s.textMode === "frame" ? "pre-wrap" : "pre",
+        WebkitTextStroke:`${(s.outlineWidth??0)*2}px ${s.outlineColor??"#000000"}`,paintOrder:"stroke fill",
+        padding:s.outlineWidth??0,marginLeft:-(s.outlineWidth??0),marginTop:-(s.outlineWidth??0) }}
       onPointerDown={(e) => e.stopPropagation()}
       onSelect={remember} onKeyUp={remember} onPointerUp={remember}
       onCompositionStart={() => { composing.current = true; }}
@@ -79,9 +82,10 @@ export function TextEditor({ tool }: { tool: TextTool }) {
       }}
       onKeyDown={(e) => {
         e.stopPropagation();
+        if ((e.ctrlKey || e.metaKey) && e.code === "KeyY") { e.preventDefault(); return; }
         if (composing.current || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
         if (e.key === "Escape") { e.preventDefault(); tool.cancel(); }
-        else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); tool.commit(); }
+        else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); tool.commit(); }
       }} />
     {s.textMode === "frame" ? <TextFrame shape={s} tool={tool} editing /> : null}
   </div>;

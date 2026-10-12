@@ -1,4 +1,5 @@
 mod ai;
+mod capture_detection;
 mod api;
 pub mod data;
 mod ocr;
@@ -6,8 +7,10 @@ mod paste_insert;
 mod paste_target;
 mod rich_clipboard;
 pub mod screenshot;
+mod pin_transition;
 mod template_files;
 mod updater;
+mod video;
 
 #[cfg(target_os = "windows")]
 mod paddle;
@@ -88,6 +91,7 @@ fn build_tray_menu(app: &tauri::AppHandle) -> Result<Menu<tauri::Wry>, tauri::Er
     let show = MenuItem::with_id(app, "show", "Открыть Snipcast", true, None::<&str>)?;
     let screenshot_item =
         MenuItem::with_id(app, "screenshot", "Новый скриншот", true, None::<&str>)?;
+    let video_item = MenuItem::with_id(app, "video", "Записать видео области", cfg!(target_os = "windows"), None::<&str>)?;
     let mut preset_items: Vec<MenuItem<tauri::Wry>> = Vec::new();
 
     let presets: Vec<data::ScreenshotPreset> = {
@@ -107,12 +111,14 @@ fn build_tray_menu(app: &tauri::AppHandle) -> Result<Menu<tauri::Wry>, tauri::Er
     }
 
     let settings = MenuItem::with_id(app, "settings", "Настройки", true, None::<&str>)?;
+    let close_pins = MenuItem::with_id(app, "close_all_pins", "Закрыть все закрепы", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
 
-    let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![&show, &screenshot_item];
+    let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![&show, &screenshot_item, &video_item];
     for item in &preset_items {
         items.push(item);
     }
+    items.push(&close_pins);
     items.push(&settings);
     items.push(&quit);
     Menu::with_items(app, &items)
@@ -415,21 +421,25 @@ fn snipcast_save_config(
 
     *cfg = incoming;
     data::save_config(&cfg)?;
+    // Native callbacks can run inline on the UI thread. Rebuilding the tray
+    // reads AppConfig again, so no config guard may survive into these calls.
+    let saved_cfg = cfg.clone();
+    drop(cfg);
 
     if hotkey_changed && !skip_hotkey {
-        apply_palette_hotkey(&app, Some(&prev_hotkey), &cfg.palette_hotkey)?;
+        apply_palette_hotkey(&app, Some(&prev_hotkey), &saved_cfg.palette_hotkey)?;
     }
     if shot_hotkey_changed && !skip_hotkey {
-        apply_screenshot_hotkey(&app, Some(&prev_shot_hotkey), &cfg.screenshot_hotkey)?;
+        apply_screenshot_hotkey(&app, Some(&prev_shot_hotkey), &saved_cfg.screenshot_hotkey)?;
     }
     if presets_changed {
-        if let Err(e) = apply_preset_hotkeys(&app, &cfg) {
+        if let Err(e) = apply_preset_hotkeys(&app, &saved_cfg) {
             refresh_tray_menu(&app);
             return Err(e);
         }
         refresh_tray_menu(&app);
     }
-    api::apply_config(&app, &cfg);
+    api::apply_config(&app, &saved_cfg);
 
     Ok(())
 }
@@ -648,8 +658,10 @@ async fn snipcast_capture_image_data(
 }
 
 #[tauri::command]
-fn snipcast_capture_copy(_app: tauri::AppHandle, png: String) -> Result<(), String> {
-    screenshot::copy_to_clipboard(&png)
+async fn snipcast_capture_copy(png: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || screenshot::copy_to_clipboard(&png))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -749,12 +761,27 @@ async fn snipcast_pin_menu(
     .map_err(|e| e.to_string())?
 }
 
-/// Действие из контекстного меню закрепа ("close" | "close_all").
+/// Действие из контекстного меню закрепа.
 #[tauri::command]
 async fn snipcast_pin_menu_action(app: tauri::AppHandle, action: String) -> Result<(), String> {
-    let res = screenshot::pin_menu_action(&app, &action);
-    screenshot::close_pin_menu(&app);
+    let action_app = app.clone();
+    let res = tauri::async_runtime::spawn_blocking(move || screenshot::pin_menu_action(&action_app, &action))
+        .await.map_err(|e| e.to_string())?;
+    if res.is_ok() { screenshot::close_pin_menu(&app); }
     res
+}
+
+#[tauri::command]
+async fn snipcast_pin_begin_annotation(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<screenshot::PinEditGeometry, String> {
+    let label = window.label().to_string();
+    screenshot::pin_ui(app,move |app| screenshot::begin_pin_annotation(app,&label)).await
+}
+
+#[tauri::command]
+async fn snipcast_pin_update(app: tauri::AppHandle, window: tauri::WebviewWindow, png: String) -> Result<(), String> {
+    let label = window.label().to_string();
+    tauri::async_runtime::spawn_blocking(move || screenshot::update_pin_image(&app, &label, &png))
+        .await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -894,6 +921,7 @@ pub fn run() {
     let setup_screenshot_hotkey = initial_cfg.screenshot_hotkey.clone();
 
     let mut builder = tauri::Builder::default()
+        .register_uri_scheme_protocol("snipcast-video", |ctx, request| video::media_response(ctx.app_handle(), request))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Повторный запуск: показать палитру уже работающего экземпляра.
             show_palette(app);
@@ -909,7 +937,9 @@ pub fn run() {
         .manage(Mutex::new(PasteTarget::default()))
         .manage(Mutex::new(initial_cfg.clone()))
         .manage(Mutex::new(screenshot::ScreenshotState::default()))
+        .manage(video::VideoState::default())
         .manage(ai::AiAgentState::default())
+        .manage(updater::UpdateRuntime::default())
         .manage(Mutex::new(PresetHotkeys::default()))
         .manage(Mutex::new(None::<TrayIcon>))
         .setup(move |app| {
@@ -932,6 +962,7 @@ pub fn run() {
             }
 
             api::apply_config(&app.handle(), &initial_cfg);
+            updater::start_scheduler(app.handle().clone());
 
             // Прогрев скрытых окон оверлеев захвата: первый после запуска
             // захват открывается бесшовно, без «холодного» моргания WebView2.
@@ -974,6 +1005,11 @@ pub fn run() {
                             if let Err(e) = start_capture_notify(app, None) {
                                 eprintln!("[snipcast] start_capture (tray): {e}");
                             }
+                        }
+                        "close_all_pins" => screenshot::close_all_pins(app),
+                        "video" => {
+                            let ah=app.clone();
+                            std::thread::spawn(move||{if let Err(e)=video::start_selection(&ah){eprintln!("[snipcast] video: {e}");}});
                         }
                         "settings" => {
                             refresh_paste_target(app);
@@ -1025,6 +1061,14 @@ pub fn run() {
             snipcast_export_template_group,
             snipcast_open_settings,
             snipcast_get_version,
+            video::snipcast_video_select,
+            video::snipcast_video_start,
+            video::snipcast_video_status,
+            video::snipcast_video_ready,
+            video::snipcast_video_pause,
+            video::snipcast_video_stop,
+            video::snipcast_video_export,
+            video::snipcast_video_cancel_export,
             snipcast_start_screenshot,
             snipcast_close_capture,
             snipcast_capture_ready,
@@ -1035,9 +1079,16 @@ pub fn run() {
             snipcast_capture_save_path,
             snipcast_capture_pin,
             snipcast_pin_info,
+            screenshot::snipcast_pin_ready,
             snipcast_close_all_pins,
             snipcast_pin_menu,
             snipcast_pin_menu_action,
+            snipcast_pin_begin_annotation,
+            snipcast_pin_update,
+            screenshot::snipcast_pin_regions,
+            screenshot::snipcast_pin_end_annotation,
+            screenshot::snipcast_pin_present,
+            screenshot::snipcast_capture_move_cursor,
             snipcast_clipboard_write_text,
             snipcast_ocr_region,
             snipcast_ocr_languages,
@@ -1059,11 +1110,25 @@ pub fn run() {
             updater::snipcast_check_update,
             updater::snipcast_install_update,
             updater::snipcast_update_writable,
+            updater::snipcast_update_notice_info,
+            updater::snipcast_skip_update,
+            updater::snipcast_dismiss_update,
         ]);
 
     builder
         .on_window_event(|window, event| {
             let label = window.label();
+            if [video::CONTROL,video::EDITOR].contains(&label) {
+                if let tauri::WindowEvent::Destroyed=event {video::window_closed(window.app_handle(),label);}
+                if let tauri::WindowEvent::Resized(_)=event {if let Some(w)=window.app_handle().get_webview_window(label){video::configure_window_frame(&w);}}
+                return;
+            }
+            if label == updater::NOTICE_LABEL {
+                if let tauri::WindowEvent::CloseRequested{api,..}=event {
+                    api.prevent_close();let _=updater::dismiss_notice(window.app_handle(),None);
+                }
+                return;
+            }
             // Оверлеи захвата и закрепы: чистим состояние при любом закрытии.
             if label.starts_with(screenshot::CAPTURE_PREFIX) {
                 if let tauri::WindowEvent::Destroyed = event {
@@ -1074,13 +1139,49 @@ pub fn run() {
             }
             if label == screenshot::PINMENU_LABEL {
                 // Клик мимо меню = потеря фокуса: закрываем, как нативное меню.
+                // Исключение — grace-период после показа (MENU_FOCUS_GRACE):
+                // при создании окно соревнуется за фокус с закрепом, и ложная
+                // потеря фокуса закрывала меню сразу после открытия.
                 if let tauri::WindowEvent::Focused(false) = event {
-                    let _ = window.close();
+                    let in_grace = {
+                        let state = window
+                            .app_handle()
+                            .state::<Mutex<screenshot::ScreenshotState>>();
+                        state
+                            .lock()
+                            .ok()
+                            .and_then(|st| st.menu_shown_at)
+                            .map(|t| t.elapsed() < screenshot::MENU_FOCUS_GRACE)
+                            .unwrap_or(false)
+                    };
+                    if in_grace {
+                        let _ = window.set_focus();
+                    } else {
+                        let selected = {let state=window.app_handle().state::<Mutex<screenshot::ScreenshotState>>();
+                            state.lock().ok().and_then(|s|s.selected_pin.clone())};
+                        if selected.as_ref().is_some_and(|l|window.app_handle().get_webview_window(l)
+                            .and_then(|w|w.is_focused().ok())!=Some(true)) {
+                            screenshot::select_pin(window.app_handle(),None);
+                        }
+                        let _ = window.close();
+                    }
+                }
+                if let tauri::WindowEvent::Destroyed = event {
+                    let state=window.app_handle().state::<Mutex<screenshot::ScreenshotState>>();
+                    if let Ok(mut st)=state.lock(){st.menu_for=None;st.menu_shown_at=None;};
                 }
                 return;
             }
 
             if label.starts_with(screenshot::PIN_PREFIX) {
+                if let tauri::WindowEvent::Focused(focused)=event {
+                    if *focused { screenshot::select_pin(window.app_handle(),Some(label.to_string())); }
+                    else {
+                        let clear={let state=window.app_handle().state::<Mutex<screenshot::ScreenshotState>>();
+                            state.lock().map(|s|s.selected_pin.as_deref()==Some(label) && s.menu_for.as_deref()!=Some(label)).unwrap_or(false)};
+                        if clear {screenshot::select_pin(window.app_handle(),None);}
+                    }
+                }
                 if let tauri::WindowEvent::Destroyed = event {
                     screenshot::on_pin_window_destroyed(&window.app_handle(), &label);
                 }

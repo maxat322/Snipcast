@@ -1,0 +1,57 @@
+[
+  {
+    "maxDelta": 0,
+    "amplitude": 1.4004308488224524,
+    "cornerInset": 3.361976334349443,
+    "maxTurn": 28.36384421980024,
+    "top": {
+      "x": 100,
+      "y": 100
+    },
+    "last": {
+      "x": 280,
+      "y": 280
+    },
+    "bounds": {
+      "x": 100,
+      "y": 99.99999999999999,
+      "w": 180,
+      "h": 180
+    },
+    "prefix": [
+      {
+        "x": 100,
+        "y": 300
+      },
+      {
+        "x": 300,
+        "y": 300
+      }
+    ],
+    "hit": true,
+    "endpoints": true,
+    "short": {
+      "x": 2,
+      "y": 2
+    },
+    "dot": [
+      {
+        "x": 1,
+        "y": 1
+      }
+    ],
+    "rawUnchanged": true
+  },
+  {
+    "scale": 1,
+    "liveExportDelta": 1
+  },
+  {
+    "scale": 1.5,
+    "liveExportDelta": 1
+  },
+  {
+    "scale": 2,
+    "liveExportDelta": 1
+  }
+]
