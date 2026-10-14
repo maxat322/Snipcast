@@ -1,0 +1,8 @@
+
+> snipcast@0.36.7 test:changed
+> node scripts/test-changed.mjs --focus capture-toolbar --files src/capture/CaptureOverlay.tsx src/capture/CaptureShortcuts.tsx
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 1
+Проверка: Захват: подсказки и один ряд цветов
+[{"theme": "dark", "scale": 1, "historyAndAltHints": true, "singleSaturatedRow": true, "shapeTextOutline": true, "neutralBorders": true, "hintsInViewport": true}, {"theme": "light", "scale": 1, "historyAndAltHints": true, "singleSaturatedRow": true, "shapeTextOutline": true, "neutralBorders": true, "hintsInViewport": true}, {"theme": "dark", "scale": 1.5, "historyAndAltHints": true, "singleSaturatedRow": true, "shapeTextOutline": true, "neutralBorders": true, "hintsInViewport": true}, {"theme": "light", "scale": 1.5, "historyAndAltHints": true, "singleSaturatedRow": true, "shapeTextOutline": true, "neutralBorders": true, "hintsInViewport": true}, {"theme": "dark", "scale": 2, "historyAndAltHints": true, "singleSaturatedRow": true, "shapeTextOutline": true, "neutralBorders": true, "hintsInViewport": true}, {"theme": "light", "scale": 2, "historyAndAltHints": true, "singleSaturatedRow": true, "shapeTextOutline": true, "neutralBorders": true, "hintsInViewport": true}]

@@ -202,18 +202,26 @@ body.settings-body {
   color: #f4f4f8;
 }
 
-/* Обе строки хоткеев — одна сетка: фиксированная колонка лейбла,
-   поле — 1fr, колонка кнопки зарезервирована в ОБОИХ строках.
-   Поля получаются пиксель-в-пиксель одинаковые. */
+/* Общие колонки для пяти подписей, полей и кнопок очистки. */
 .settings__option--hotkey {
   display: grid;
-  grid-template-columns: 140px 1fr 96px;
+  grid-template-columns: minmax(180px, 225px) minmax(0, 1fr) 40px;
   gap: 12px;
   align-items: center;
 }
+.settings__hotkey-list {display:flex;flex-direction:column;gap:12px;}
+.settings__hotkey-list .settings__option {margin:0;}
+.settings__hotkey-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 4px;
+}
 
 .settings__option--hotkey .settings__option-label {
-  white-space: nowrap;
+  font-weight: 400;
 }
 
 .settings__option--hotkey .settings__hotkey-input {
@@ -221,9 +229,16 @@ body.settings-body {
   margin: 0;
 }
 
-.settings__hotkey-ghost {
-  width: 96px;
-  height: 1px;
+.settings__hotkey-clear {
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 800px) {
+  .settings__option--hotkey { grid-template-columns: minmax(0, 1fr) 40px; }
+  .settings__option--hotkey .settings__option-label { grid-column: 1 / -1; }
 }
 
 .settings__option-label {
@@ -860,11 +875,11 @@ body.settings-body {
   color: #e8e8ec;
 }
 
-/* Кнопка «Очистить» — в высоту поля, в едином с ним стиле */
+/* Кнопка очистки — в высоту поля, в едином с ним стиле. */
 .settings__option--hotkey .settings__ghost {
   height: 100%;
   min-height: 40px;
-  padding: 0 14px;
+  padding: 0;
   border-radius: 8px;
   background: #121214;
   color: #e8e8ec;

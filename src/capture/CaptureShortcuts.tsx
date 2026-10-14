@@ -5,7 +5,7 @@ import type { Pt, ShapeKind } from "./shapes";
 type Rect={x:number;y:number;w:number;h:number};
 type Geometry={x:number;y:number;width:number;height:number;monitors?:ScreenMonitor[]};
 export type HintMotion={move:((point:Pt)=>void)|null};
-type Props={info:Geometry|null;viewport:{w:number;h:number};session:number;
+type Props={actionKeys?:{save:string;pin:string;copy:string};info:Geometry|null;viewport:{w:number;h:number};session:number;
   cursor:RefObject<Pt|null>;motion:RefObject<HintMotion>;selected:boolean;
   gesture?:string;editing:boolean;selectedShape:boolean;tool:ShapeKind|null;mode:"element"|"window"};
 const overlaps=(a:Rect,b:Rect)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
@@ -32,8 +32,11 @@ export const CaptureShortcuts=memo(function CaptureShortcuts(p:Props) {
       }
       const {width,height,positions}=cached;
       if(monitorKey.current!==key){monitorKey.current=key;corner.current=0;}
-      const current=positions[corner.current]!;
-      if(point.x>=current.x-12&&point.x<=current.x+width+12&&point.y>=current.y-12&&point.y<=current.y+height+12){
+      const home=positions[0]!;
+      const overHome=point.x>=home.x-12&&point.x<=home.x+width+12&&point.y>=home.y-12&&point.y<=home.y+height+12;
+      if(corner.current!==0&&!overHome)corner.current=0;
+      const active=positions[corner.current]!;
+      if(point.x>=active.x-12&&point.x<=active.x+width+12&&point.y>=active.y-12&&point.y<=active.y+height+12){
         const obstacles=Array.from(document.querySelectorAll<HTMLElement>(".capture__loupe,.capture__toolbar,.capture__opts"))
           .map(node=>{const r=node.getBoundingClientRect();return {x:r.x-8,y:r.y-8,w:r.width+16,h:r.height+16};});
         let best=corner.current,score=-Infinity;
@@ -67,14 +70,16 @@ export const CaptureShortcuts=memo(function CaptureShortcuts(p:Props) {
       {p.gesture==="draw"&&["line","arrow","freehand"].includes(p.tool??"")?row("Shift","рисовать горизонтально / вертикально"):null}
       {row("← ↑ ↓ →","курсор на 1 пиксель")}</>
     :p.selected?<>
-      {row("C","копировать и закрыть")}{row("Enter","сохранить в файл")}{row("Пробел","закрепить область")}
+      {row(p.actionKeys?.copy??"C","копировать и закрыть")}{row(p.actionKeys?.save??"Enter","сохранить в файл")}{row(p.actionKeys?.pin??"Пробел","закрепить область")}
       {row("1 2 ... 8","выбрать инструмент")}
       {row("Ctrl+Z","отменить действие")}{row("Ctrl+Shift+Z","повторить действие")}
       {p.selectedShape?row("Delete / Backspace","удалить аннотацию"):null}
       {["line","arrow","freehand"].includes(p.tool??"")?row("Shift","рисовать горизонтально / вертикально"):null}</>
     :<><div>Клик — выбрать предложенную область</div><div>Перетаскивание — выделить вручную</div>
       <div><kbd>Tab</kbd> элементы / окна <strong>{p.mode==="element"?"Элементы":"Окна"}</strong></div></>}
-    {!p.editing&&!dragging?<>{row("A","весь монитор под курсором")}{row("← ↑ ↓ →","курсор на 1 пиксель")}</>:null}
+    {!p.editing&&(p.selected||!dragging)?row("Alt","центральные направляющие области"):null}
+    {!p.editing&&p.selected?row("Alt + действие","оставить направляющие на снимке"):null}
+    {!p.editing&&!dragging?<>{row("− / +","Истории скриншотов: старее / новее")}{row("A","весь монитор под курсором")}{row("← ↑ ↓ →","курсор на 1 пиксель")}</>:null}
     {row("Esc",dragging?(p.gesture==="draw"?"отменить рисование":"отменить выделение"):escape)}
   </div>;
 });

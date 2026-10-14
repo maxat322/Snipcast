@@ -12,6 +12,8 @@ import { listen } from "@tauri-apps/api/event";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import {CaptureActionHotkeyField} from "./components/CaptureActionHotkeyField";
+import {ClearHotkeyButton} from "./components/ClearHotkeyButton";
 import { createHotkeyRecorder, tauriHotkeyToDisplay } from "./hotkeyFormat";
 import type {
   AppConfig,
@@ -33,6 +35,15 @@ import "./theme-overrides.css";
 import "./Settings.css";
 
 const REPO_URL = "https://github.com/maxat322/Snipcast";
+
+// Match the new-user defaults in src-tauri/src/data.rs.
+const DEFAULT_SETTINGS_HOTKEYS = {
+  paletteHotkey: "CommandOrControl+Shift+Backslash",
+  screenshotHotkey: "PrintScreen",
+  screenshotSaveHotkey: "Enter",
+  screenshotPinHotkey: "Space",
+  screenshotCopyHotkey: "C",
+} as const;
 
 type UpdateState = "idle" | "checking" | "available" | "uptodate" | "installing" | "error";
 
@@ -501,6 +512,7 @@ export function SettingsApp() {
   const [hotkeyDisplay, setHotkeyDisplay] = useState("");
   const [screenshotHotkeyDisplay, setScreenshotHotkeyDisplay] = useState("");
   const [screenshotHotkeyCapturing, setScreenshotHotkeyCapturing] = useState(false);
+  const [resettingHotkeys, setResettingHotkeys] = useState(false);
   const [errorToast, setErrorToast] = useState("");
   const [version, setVersion] = useState("");
   const [varRows, setVarRows] = useState<{ key: string; value: string }[]>([]);
@@ -1086,10 +1098,11 @@ export function SettingsApp() {
     const base = configRef.current;
     if (!base || !base.paletteHotkey.trim()) return;
     const next = { ...base, paletteHotkey: "" };
-    setHotkeyDisplay("");
     try {
       // Без skip: бэкенд сразу снимает прежнюю комбинацию.
       await saveConfig(next);
+      setConfig(current => current ? { ...current, paletteHotkey: "" } : current);
+      setHotkeyDisplay("");
     } catch (e) {
       showError(e);
     }
@@ -1099,14 +1112,30 @@ export function SettingsApp() {
     const base = configRef.current;
     if (!base || !base.screenshotHotkey.trim()) return;
     const next = { ...base, screenshotHotkey: "" };
-    setScreenshotHotkeyDisplay("");
     try {
       // Без skip: бэкенд должен снять прежнюю комбинацию сразу
       // (resume с пустым хоткеем старую регистрацию не убирает).
       await saveConfig(next);
-      setConfig(next);
+      setConfig(current => current ? { ...current, screenshotHotkey: "" } : current);
+      setScreenshotHotkeyDisplay("");
     } catch (e) {
       showError(e);
+    }
+  };
+
+  const onResetHotkeys = async () => {
+    const base = configRef.current;
+    if (!base || resettingHotkeys) return;
+    setResettingHotkeys(true);
+    try {
+      await saveConfig({ ...base, ...DEFAULT_SETTINGS_HOTKEYS });
+      setConfig(current => current ? { ...current, ...DEFAULT_SETTINGS_HOTKEYS } : current);
+      setHotkeyDisplay(tauriHotkeyToDisplay(DEFAULT_SETTINGS_HOTKEYS.paletteHotkey));
+      setScreenshotHotkeyDisplay(tauriHotkeyToDisplay(DEFAULT_SETTINGS_HOTKEYS.screenshotHotkey));
+    } catch (error) {
+      showError(error);
+    } finally {
+      setResettingHotkeys(false);
     }
   };
 
@@ -1896,13 +1925,20 @@ export function SettingsApp() {
                   <span className="settings__toggle-knob" />
                 </button>
               </div>
+              <div className="settings__hotkey-list" role="group" aria-label="Горячие клавиши">
+              <div className="settings__hotkey-heading">
+                <div className="settings__option-label">Горячие клавиши</div>
+                <button type="button" className="settings__ghost" disabled={!config || resettingHotkeys}
+                  onClick={() => void onResetHotkeys()}>Вернуть по-умолчанию</button>
+              </div>
               <div className="settings__option settings__option--hotkey">
-                <span className="settings__option-label">Хоткей</span>
+                <span className="settings__option-label">Палитра шаблонов</span>
                 <input
                   type="text"
                   readOnly
                   className="settings__hotkey-input"
                   value={hotkeyDisplay}
+                  disabled={resettingHotkeys}
                   onFocus={onHotkeyFocus}
                   onBlur={onHotkeyBlur}
                   onKeyDown={(e) => void onHotkeyKeyEvent(e)}
@@ -1913,23 +1949,18 @@ export function SettingsApp() {
                   spellCheck={false}
                   aria-label="Запись хоткея палитры"
                 />
-                <button
-                  type="button"
-                  className="settings__ghost"
-                  disabled={!hotkeyDisplay.trim()}
-                  onClick={() => void onClearPaletteHotkey()}
-                >
-                  Очистить
-                </button>
+                <ClearHotkeyButton label="Палитра шаблонов" disabled={!hotkeyDisplay.trim() || resettingHotkeys}
+                  onClick={() => void onClearPaletteHotkey()}/>
               </div>
 
               <div className="settings__option settings__option--hotkey">
-                <span className="settings__option-label">Хоткей скриншота</span>
+                <span className="settings__option-label">Скриншот</span>
                 <input
                   type="text"
                   readOnly
                   className="settings__hotkey-input"
                   value={screenshotHotkeyDisplay}
+                  disabled={resettingHotkeys}
                   onFocus={onScreenshotHotkeyFocus}
                   onBlur={onScreenshotHotkeyBlur}
                   onKeyDown={(e) => void onScreenshotHotkeyKeyEvent(e)}
@@ -1944,14 +1975,14 @@ export function SettingsApp() {
                   spellCheck={false}
                   aria-label="Запись хоткея скриншота"
                 />
-                <button
-                  type="button"
-                  className="settings__ghost"
-                  disabled={!screenshotHotkeyDisplay.trim()}
-                  onClick={() => void onClearScreenshotHotkey()}
-                >
-                  Очистить
-                </button>
+                <ClearHotkeyButton label="Скриншот" disabled={!screenshotHotkeyDisplay.trim() || resettingHotkeys}
+                  onClick={() => void onClearScreenshotHotkey()}/>
+              </div>
+              {config?([ ["Скриншот: сохранить в файл","screenshotSaveHotkey","Enter"],["Скриншот: закрепить","screenshotPinHotkey","Space"],["Скриншот: копировать в буфер","screenshotCopyHotkey","C"] ] as const).map(([label,field,fallback])=>
+                <CaptureActionHotkeyField key={field} label={label} value={config[field]??fallback} disabled={resettingHotkeys} onSave={async value=>{
+                  const previous=configRef.current;if(!previous)return;const next={...previous,[field]:value};
+                  try{await saveConfig(next);setConfig(current=>current?{...current,[field]:value}:current);}catch(err){showError(err);}
+                }}/>):null}
               </div>
             </div>
           </div>
@@ -1959,6 +1990,7 @@ export function SettingsApp() {
 
         {section === "screenshot" && config ? (
           <div className="settings__panel">
+            {config.screenshotPresetNotice?<div role="status" className="settings__option">{config.screenshotPresetNotice}</div>:null}
             <div className="settings__group">
               <div className="settings__option settings__option--stack">
                 <span className="settings__option-label">Формат файла</span>

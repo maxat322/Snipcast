@@ -108,6 +108,8 @@ def check_corners(page,label,name):
     assert user.ClientToScreen(hwnd,ctypes.byref(origin))
     assert len(fixture_handles)==1
     fixture_origin=ctypes.wintypes.POINT();assert user.ClientToScreen(ctypes.c_void_p(fixture_handles[0]),ctypes.byref(fixture_origin))
+    assert user.SetWindowPos(ctypes.c_void_p(fixture_handles[0]),ctypes.c_void_p(-1),0,0,0,0,0x13)
+    assert user.SetWindowPos(hwnd,ctypes.c_void_p(-1),0,0,0,0,0x13)
     fixture_dpr=main.evaluate('devicePixelRatio')
     affinity=ctypes.c_ulong();assert user.GetWindowDisplayAffinity(hwnd,ctypes.byref(affinity))
     if affinity.value:invoke(page,'plugin:window|set_content_protected',{'label':label,'value':False})
@@ -141,7 +143,7 @@ try:
         browser=p.chromium.connect_over_cdp(f'http://127.0.0.1:{PORT}');ctx=browser.contexts[0]
         main=find(ctx,'body.settings-body');errors=[]
         ctx.on('page',lambda page:page.on('pageerror',lambda e:errors.append(str(e))))
-        assert invoke(main,'snipcast_get_version')=='0.36.5'
+        assert invoke(main,'snipcast_get_version')=='0.36.6'
         for existing_page in ctx.pages:existing_page.on('pageerror',lambda e:errors.append(str(e)))
         label=main.evaluate('window.__TAURI_INTERNALS__.metadata.currentWindow.label')
         user=ctypes.windll.user32
@@ -255,8 +257,9 @@ try:
         expect(editor.locator('video')).to_have_js_property('videoWidth',WIDTH)
         editor.wait_for_function("document.querySelectorAll('.video-filmstrip img').length===8",timeout=20000)
         assert abs(float(editor.get_by_role('slider',name='Конец фрагмента',exact=True).input_value())-st['durationMs']/1000)<.0001,'End thumb rounded away from recording end'
-        editor.get_by_role('button',name='Воспроизвести',exact=True).click();editor.wait_for_timeout(400)
-        assert editor.locator('video').evaluate('v=>v.currentTime')>.1
+        invoke(editor,'plugin:window|set_focus',{'label':'video-editor'})
+        editor.get_by_role('button',name='Воспроизвести',exact=True).click()
+        editor.wait_for_function('document.querySelector("video").currentTime>.1',timeout=5000)
         editor.get_by_role('button',name='Пауза',exact=True).click()
         # Cursor follows the held mouse, including moves outside the timeline.
         timeline=editor.locator('.video-filmstrip').bounding_box();tx,ty=timeline['x'],timeline['y']+timeline['height']/2
@@ -276,6 +279,8 @@ try:
         assert user.SetWindowPos(hwnd,ctypes.c_void_p(-1),0,0,0,0,0x13)
         dpr=editor.evaluate('devicePixelRatio')
         def mouse_at(x,y):
+            client_origin.x=client_origin.y=0
+            assert user.ClientToScreen(hwnd,ctypes.byref(client_origin))
             point=ctypes.wintypes.POINT(client_origin.x+round(x*dpr),client_origin.y+round(y*dpr))
             user.WindowFromPoint.restype=ctypes.c_void_p;user.GetAncestor.restype=ctypes.c_void_p
             hit=user.WindowFromPoint(point)
@@ -284,23 +289,33 @@ try:
         editor.mouse.click(tx+thumb_width/2+(timeline['width']-thumb_width)*.6,ty)
         saved_position=editor.locator('video').evaluate('v=>v.currentTime')
         saved_cursor=editor.locator('.video-filmstrip').evaluate('el=>getComputedStyle(el).getPropertyValue("--play-position")')
+        editor.mouse.move(10,10);editor.wait_for_timeout(200)
         for name,fraction in [('Начало фрагмента',.3),('Конец фрагмента',.9)]:
             handle=editor.get_by_role('slider',name=name,exact=True)
             value=float(handle.input_value());duration=float(handle.get_attribute('max'))
             hx=tx+thumb_width/2+(timeline['width']-thumb_width)*value/duration
             editor.evaluate('''()=>{window.qaPresentedFrame=null;const v=document.querySelector('video');const watch=(_,frame)=>{window.qaPresentedFrame=frame.mediaTime;window.qaFrameWatch=v.requestVideoFrameCallback(watch);};window.qaFrameWatch=v.requestVideoFrameCallback(watch);}''')
             mouse_at(hx,ty);assert not(user.GetAsyncKeyState(1)&0x8000),'User mouse is already held'
+            cursor_left=editor.locator('.video-filmstrip__playhead').bounding_box()['x']
             user.mouse_event(2,0,0,0,0);native_mouse_held=True
-            expect(editor.locator('.video-filmstrip__playhead')).to_be_hidden()
-            mouse_at(tx+thumb_width/2+(timeline['width']-thumb_width)*fraction,ty)
-            editor.wait_for_function('([name,old])=>Math.abs(Number(document.querySelector(`input[aria-label="${name}"]`).value)-old)>.1',arg=[name,value])
-            assert handle.evaluate("el=>el.matches(':active')")
-            expect(editor.locator('.video-filmstrip__playhead')).to_be_hidden()
-            editor.screenshot(path=str(OUT/('trim-start-drag.png' if name=='Начало фрагмента' else 'trim-end-drag.png')))
+            destination=tx+thumb_width/2+(timeline['width']-thumb_width)*fraction
+            # WebView2 can defer CDP replies while its native range drag owns the
+            # mouse. Inspect the real desktop while held, then query DOM on release.
+            for step in range(1,11):
+                mouse_at(hx+(destination-hx)*step/10,ty);time.sleep(.025)
+            time.sleep(.15)
+            client_origin.x=client_origin.y=0;assert user.ClientToScreen(hwnd,ctypes.byref(client_origin))
+            held=ImageGrab.grab(bbox=(client_origin.x,client_origin.y,client_origin.x+round(900*dpr),client_origin.y+round(660*dpr))).convert('RGB')
+            held.save(OUT/('trim-start-drag.png' if name=='Начало фрагмента' else 'trim-end-drag.png'))
+            column=round(cursor_left*dpr)
+            rows=range(round((timeline['y']+8)*dpr),round((timeline['y']+timeline['height']-8)*dpr))
+            white=sum(max(abs(c-235) for c in held.getpixel((column,y)))<30 for y in rows)
+            assert white<len(rows)/4,('Playhead visible during native trim',white,len(rows))
             user.mouse_event(4,0,0,0,0);native_mouse_held=False
             expect(editor.locator('.video-filmstrip__playhead')).to_be_visible()
             boundary=float(handle.input_value())
             assert abs(boundary-value)>.1,(name,value,boundary)
+            assert abs(boundary-duration*fraction)<.04,(name,boundary,duration*fraction)
             assert abs(editor.locator('video').evaluate('v=>v.currentTime')-boundary)<.03
             editor.wait_for_function('target=>window.qaPresentedFrame!==null&&!document.querySelector("video").seeking&&Math.abs(qaPresentedFrame-target)<.15',arg=boundary)
             presented=editor.evaluate('window.qaPresentedFrame')
@@ -489,6 +504,13 @@ try:
         demo_editor.get_by_role('combobox',name='Частота GIF').click()
         demo_editor.get_by_role('option',name='10 кадров/с',exact=True).click()
         save_button=demo_editor.get_by_role('button',name='Сохранить GIF',exact=True)
+        save_button.hover();demo_editor.wait_for_timeout(300)
+        expect(demo_editor.get_by_role('menu',name='Быстрые места сохранения')).to_be_visible()
+        demo_editor.get_by_role('menuitem',name='QA folder',exact=False).hover();demo_editor.wait_for_timeout(200)
+        assert not list((OUT/'quick-saves').iterdir()),'Hover unexpectedly saved the video'
+        demo_editor.mouse.move(10,10);demo_editor.wait_for_timeout(200)
+        expect(demo_editor.get_by_role('menu',name='Быстрые места сохранения')).to_be_hidden()
+        results['hoverQuickSaveMenu']=True
         def hold_save():
             rect=save_button.bounding_box();demo_editor.mouse.move(rect['x']+rect['width']/2,rect['y']+rect['height']/2);demo_editor.mouse.down();demo_editor.wait_for_timeout(350)
             expect(demo_editor.get_by_role('menu',name='Быстрые места сохранения')).to_be_visible()
@@ -514,6 +536,11 @@ try:
         print(json.dumps(results,ensure_ascii=False,indent=2))
 finally:
     if native_mouse_held:ctypes.windll.user32.mouse_event(4,0,0,0,0)
+    children=psutil.Process(proc.pid).children(recursive=True) if proc.poll() is None else []
     if proc.poll() is None:proc.terminate();proc.wait(timeout=10)
+    for child in children:
+        try:child.terminate()
+        except psutil.NoSuchProcess:pass
+    psutil.wait_procs(children,timeout=3)
     for key in [0x7A,0x7B]:ctypes.windll.user32.keybd_event(key,ctypes.windll.user32.MapVirtualKeyW(key,0),2,0)
     server.shutdown();log.close()

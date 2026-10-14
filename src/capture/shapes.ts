@@ -6,8 +6,8 @@
 
 export type ShapeKind = "line" | "rect" | "square" | "ellipse" | "circle" | "arrow" | "freehand" | "text";
 export type Pt = { x: number; y: number };
-type ShapeBase = { id: number; color: string; p1: Pt; p2: Pt };
-export type DrawShape = ShapeBase & { kind: Exclude<ShapeKind, "text">; thickness: number; points?: Pt[]; straightPrefix?:number };
+type ShapeBase = { id: number; color: string; p1: Pt; p2: Pt; opacity?: number };
+export type DrawShape = ShapeBase & { kind: Exclude<ShapeKind, "text">; thickness: number; filled?: boolean; points?: Pt[]; straightPrefix?:number };
 export type TextShape = ShapeBase & {
   kind: "text";
   /** Original text, including hard line breaks; soft breaks belong to layout. */
@@ -165,7 +165,24 @@ function paintFreehand(ctx:CanvasRenderingContext2D,s:DrawShape) {
  * Рисует одну фигуру на контексте. `k` — физический масштаб: все CSS-координаты
  * и размеры умножаются на него (k=1, если контекст уже отмасштабирован).
  */
+let opacitySurface:HTMLCanvasElement|null=null;
 export function drawShape(ctx: CanvasRenderingContext2D, s: Shape, k: number): void {
+  const opacity=Math.max(0,Math.min(1,s.opacity??1));
+  if(opacity===0)return;
+  if(opacity<1){
+    const b=shapeBounds(s),t=ctx.getTransform(),scale=Math.max(Math.hypot(t.a,t.b),Math.hypot(t.c,t.d),1)*k;
+    const pad=4+(s.kind==="text"?(s.outlineWidth??0):Math.max(s.thickness,s.kind==="arrow"?arrowHeadLen(s.thickness):0));
+    const left=Math.floor((b.x-pad)*scale),top=Math.floor((b.y-pad)*scale),width=Math.max(1,Math.ceil((b.x+b.w+pad)*scale)-left),height=Math.max(1,Math.ceil((b.y+b.h+pad)*scale)-top);
+    const layer=opacitySurface??(opacitySurface=document.createElement("canvas"));
+    if(layer.width!==width)layer.width=width;if(layer.height!==height)layer.height=height;
+    const ink=layer.getContext("2d");if(ink){
+      ink.resetTransform();ink.clearRect(0,0,width,height);ink.setTransform(scale,0,0,scale,-left,-top);
+      drawShape(ink,{...s,opacity:1},1);
+      ctx.save();ctx.globalAlpha*=opacity;ctx.drawImage(layer,left/scale*k,top/scale*k,width/scale*k,height/scale*k);ctx.restore();return;
+    }
+  }
+  ctx.save();
+  ctx.globalAlpha*=opacity;
   const x1 = s.p1.x * k;
   const y1 = s.p1.y * k;
   const x2 = s.p2.x * k;
@@ -173,11 +190,11 @@ export function drawShape(ctx: CanvasRenderingContext2D, s: Shape, k: number): v
 
   if (s.kind === "text") {
     drawText(ctx, s, k);
+    ctx.restore();
     return;
   }
   const th = Math.max(1, s.thickness) * k;
 
-  ctx.save();
   ctx.strokeStyle = s.color;
   ctx.fillStyle = s.color;
   ctx.lineWidth = th;
@@ -196,13 +213,14 @@ export function drawShape(ctx: CanvasRenderingContext2D, s: Shape, k: number): v
   } else if (s.kind === "rect" || s.kind === "square") {
     const rx = Math.min(x1, x2);
     const ry = Math.min(y1, y2);
-    ctx.strokeRect(rx, ry, Math.abs(x2 - x1), Math.abs(y2 - y1));
+    if(s.filled)ctx.fillRect(rx,ry,Math.abs(x2-x1),Math.abs(y2-y1));
+    else ctx.strokeRect(rx, ry, Math.abs(x2 - x1), Math.abs(y2 - y1));
   } else if (s.kind === "ellipse" || s.kind === "circle") {
     const cx = (x1 + x2) / 2;
     const cy = (y1 + y2) / 2;
     ctx.beginPath();
     ctx.ellipse(cx, cy, Math.abs(x2 - x1) / 2, Math.abs(y2 - y1) / 2, 0, 0, Math.PI * 2);
-    ctx.stroke();
+    if(s.filled)ctx.fill();else ctx.stroke();
   } else if (s.kind === "arrow") {
     const ang = Math.atan2(y2 - y1, x2 - x1);
     const hl = arrowHeadLen(s.thickness) * k;
@@ -253,6 +271,7 @@ export function hitTest(s: Shape, pt: Pt): boolean {
     const nearB = Math.abs(pt.y - (y + h)) <= 6;
     const withinX = pt.x >= x - 6 && pt.x <= x + w + 6;
     const withinY = pt.y >= y - 6 && pt.y <= y + h + 6;
+    if(s.filled&&withinX&&withinY)return true;
     return ((nearL || nearR) && withinY) || ((nearT || nearB) && withinX);
   }
 
@@ -266,6 +285,7 @@ export function hitTest(s: Shape, pt: Pt): boolean {
     }
     // Близость к линии эллипса по нормированному радиусу.
     const nr = Math.hypot((pt.x - cx) / rx, (pt.y - cy) / ry);
+    if(s.filled&&nr<=1)return true;
     return Math.abs(nr - 1) * Math.min(rx, ry) <= Math.max(6, tol);
   }
 

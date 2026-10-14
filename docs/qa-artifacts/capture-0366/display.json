@@ -1,0 +1,12 @@
+{
+  "displays": [
+    {
+      "error": 0,
+      "advancedColorSupported": true,
+      "advancedColorEnabled": false,
+      "bitsPerChannel": 8
+    }
+  ],
+  "displayQueryError": 0,
+  "iccProfile": "AOC Generic PnP-1.icm"
+}

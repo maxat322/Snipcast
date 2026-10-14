@@ -61,6 +61,8 @@ export function useAnnotationScene() {
     past.current=past.current.map(convert);future.current=future.current.map(convert);
     if(transaction.current)transaction.current=convert(transaction.current);setShapes(convert(ref.current));
   },[setShapes]);
-  return { shapes, ref, setShapes, begin, finish, cancel, change, undo, reset,scale,translate };
+  const snapshot=()=>{finish();return {shapes:ref.current,past:past.current,future:future.current};};
+  const restore=(value:ReturnType<typeof snapshot>)=>{transaction.current=null;past.current=value.past;future.current=value.future;setShapes(value.shapes);};
+  return { shapes, ref, setShapes, begin, finish, cancel, change, undo, reset,scale,translate,snapshot,restore };
 }
 export type AnnotationScene = ReturnType<typeof useAnnotationScene>;

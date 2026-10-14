@@ -1,0 +1,26 @@
+{
+  "defaultPresetMigration": true,
+  "deletedDefaultNotRecreated": true,
+  "settingsRemappingAndConflict": true,
+  "nativeDpiScale": 1,
+  "clipboardHistory": {
+    "enabled": true,
+    "status": "Success",
+    "newItemsStillPresent": 4
+  },
+  "clipboardPixelsExact": true,
+  "largeClipboard": {
+    "pngBytes": 4726345,
+    "bitmapBytes": 6291456,
+    "dimensions": [
+      1536,
+      1024
+    ],
+    "newHistoryItems": 0,
+    "fullSizePreserved": true
+  },
+  "saveLeavesClipboardUntouched": true,
+  "pinLeavesClipboardUntouchedAndNoHint": true,
+  "historyThirtyFilesPersistentAndDeduplicated": true,
+  "pageErrors": []
+}

@@ -4,6 +4,7 @@ import {listen} from "@tauri-apps/api/event";
 import {getCurrentWindow} from "@tauri-apps/api/window";
 import {save} from "@tauri-apps/plugin-dialog";
 import type {AppConfig} from "../types";
+import {useQuickSaveHover} from "../components/useQuickSaveHover";
 import {ThemedSelect} from "../components/ThemedSelect";
 import {applyUiThemeSetting,normalizeUiTheme} from "../uiTheme";
 import "./video.css";
@@ -52,6 +53,8 @@ export function RecordControl(){
 export function VideoEditor(){
   const {status,error,setError,config}=useVideoStatus();const video=useRef<HTMLVideoElement>(null),preview=useRef<HTMLDivElement>(null);
   const [start,setStart]=useState(0),[end,setEnd]=useState(0),[position,setPosition]=useState(0),[playing,setPlaying]=useState(false);
+  const [trimming,setTrimming]=useState(false);
+  const trimGesture=useRef<{id:number;edge:"start"|"end"}|null>(null);
   const [format,setFormat]=useState("mp4"),[quality,setQuality]=useState("small"),[gifWidth,setGifWidth]=useState(800),[gifFps,setGifFps]=useState(10);
   const [cropOn,setCropOn]=useState(false),[crop,setCrop]=useState<Crop>({x:0,y:0,w:1,h:1});
   const [appliedCrop,setAppliedCrop]=useState<Crop|null>(null);
@@ -62,6 +65,7 @@ export function VideoEditor(){
   const initialized=useRef<number|null>(null),drag=useRef<{x:number;y:number;original:Crop;handle:string}|null>(null),scrub=useRef<number|null>(null),boundaryPreview=useRef(false);
   const duration=(status?.durationMs??0)/1000,selected=Math.max(0,end-start),busy=status?.phase==="exporting"||dialogBusy;
   const ready=status?.phase==="editing";
+  const quickHover=useQuickSaveHover(setQuickOpen,busy||cropOn||!ready);
   const source=status?convertFileSrc(`${status.id}.mp4`,"snipcast-video"):"";
   const sourceWidth=status?.width??960,sourceHeight=status?.height??540;
   const even=(value:number)=>Math.floor((value+1e-6)/2)*2;
@@ -98,7 +102,17 @@ export function VideoEditor(){
     e.preventDefault();update(Number(e.currentTarget.value)+(["ArrowRight","ArrowUp"].includes(e.key)?.1:-.1));
   };
   const scrubTo=(e:ReactPointerEvent<HTMLDivElement>)=>{const bounds=e.currentTarget.getBoundingClientRect();seek(clamp((e.clientX-bounds.left-TRIM_HANDLE_WIDTH/2)/Math.max(1,bounds.width-TRIM_HANDLE_WIDTH),0,1)*duration);};
-  const beginTrim=(e:ReactPointerEvent<HTMLInputElement>)=>{if(e.button!==0||busy||!ready)return;video.current?.pause();};
+  const moveTrim=(e:ReactPointerEvent<HTMLInputElement>)=>{const gesture=trimGesture.current;if(gesture?.id!==e.pointerId)return;
+    const bounds=e.currentTarget.getBoundingClientRect();const value=clamp((e.clientX-bounds.left-TRIM_HANDLE_WIDTH/2)/Math.max(1,bounds.width-TRIM_HANDLE_WIDTH),0,1)*duration;
+    if(gesture.edge==="start")updateStart(value);else updateEnd(value);};
+  const beginTrim=(e:ReactPointerEvent<HTMLInputElement>)=>{if(e.button!==0||busy||!ready)return;
+    // Avoid WebView2's native range drag loop: it can cancel pointer events
+    // while keeping :active, losing subsequent movement and release.
+    e.preventDefault();video.current?.pause();trimGesture.current={id:e.pointerId,edge:e.currentTarget.getAttribute("aria-label")==="Начало фрагмента"?"start":"end"};
+    e.currentTarget.setPointerCapture(e.pointerId);setTrimming(true);};
+  const finishTrim=(e:ReactPointerEvent<HTMLInputElement>)=>{moveTrim(e);trimGesture.current=null;setTrimming(false);if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);};
+  useEffect(()=>{const finish=()=>{trimGesture.current=null;setTrimming(false);};window.addEventListener("pointerup",finish);window.addEventListener("pointercancel",finish);window.addEventListener("blur",finish);
+    return()=>{window.removeEventListener("pointerup",finish);window.removeEventListener("pointercancel",finish);window.removeEventListener("blur",finish);};},[]);
   const beginScrub=(e:ReactPointerEvent<HTMLDivElement>)=>{if(e.button!==0||busy||!ready||(e.target as HTMLElement).tagName==="INPUT")return;
     e.preventDefault();video.current?.pause();scrub.current=e.pointerId;e.currentTarget.setPointerCapture(e.pointerId);scrubTo(e);};
   const finishScrub=(e:ReactPointerEvent<HTMLDivElement>)=>{if(scrub.current!==e.pointerId)return;scrubTo(e);scrub.current=null;if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);};
@@ -131,7 +145,7 @@ export function VideoEditor(){
     window.addEventListener("pointerup",finish);window.addEventListener("pointermove",move);window.addEventListener("pointercancel",cancel);window.addEventListener("blur",cancel);
     return()=>{if(hold.current)clearTimeout(hold.current.timer);window.removeEventListener("pointerup",finish);window.removeEventListener("pointermove",move);window.removeEventListener("pointercancel",cancel);window.removeEventListener("blur",cancel);};
   },[config]);
-  const savePointerDown=(e:ReactPointerEvent<HTMLButtonElement>)=>{if(e.button!==0||busy||cropOn||!ready)return;suppressClick.current=false;
+  const savePointerDown=(e:ReactPointerEvent<HTMLButtonElement>)=>{if(e.button!==0||busy||cropOn||!ready)return;suppressClick.current=false;quickHover.cancel();
     e.currentTarget.setPointerCapture(e.pointerId);const h={timer:0,fired:false};hold.current=h;h.timer=window.setTimeout(()=>{h.fired=true;suppressClick.current=true;setQuickOpen(true);},250);
   };
   const saveClick=()=>{if(suppressClick.current){suppressClick.current=false;return;}void saveVideo();};
@@ -180,12 +194,12 @@ export function VideoEditor(){
       <div className="video-timeline__times"><label>Начало <input aria-label="Начало фрагмента, секунды" type="number" min="0" max={Math.max(0,end-.1)} step="0.1" value={Number(start.toFixed(1))} disabled={busy||!ready} onChange={e=>updateStart(Number(e.target.value))}/><span>с</span></label>
         <span className="video-timeline__duration">Выбрано {selected.toFixed(1).replace(".",",")} с</span>
         <label>Конец <input aria-label="Конец фрагмента, секунды" type="number" min={start+.1} max={duration} step="0.1" value={Number(end.toFixed(1))} disabled={busy||!ready} onChange={e=>updateEnd(Number(e.target.value))}/><span>с</span></label></div>
-      <div className="video-filmstrip" onPointerDown={beginScrub} onPointerMove={e=>{if(scrub.current===e.pointerId)scrubTo(e);}} onPointerUp={finishScrub}
+      <div className="video-filmstrip" data-trimming={trimming} onPointerDown={beginScrub} onPointerMove={e=>{if(scrub.current===e.pointerId)scrubTo(e);}} onPointerUp={finishScrub}
         onPointerCancel={()=>{scrub.current=null;}} onLostPointerCapture={()=>{scrub.current=null;}}>
         <div className="video-filmstrip__frames" aria-hidden>{Array.from({length:8},(_,n)=><div key={n}>{thumbnails[n]?<img src={thumbnails[n]} alt=""/>:<span/>}</div>)}</div>
         <div className="video-filmstrip__shade video-filmstrip__shade--left"/><div className="video-filmstrip__shade video-filmstrip__shade--right"/><div className="video-filmstrip__selection"/>
-        <input className="video-trim-range" type="range" aria-label="Начало фрагмента" min={0} max={duration||1} step="0.001" value={start} disabled={busy||!ready} onPointerDown={beginTrim} onKeyDown={e=>trimKey(e,updateStart)} onChange={e=>updateStart(Number(e.target.value))}/>
-        <input className="video-trim-range" type="range" aria-label="Конец фрагмента" min={0} max={duration||1} step="0.001" value={end} disabled={busy||!ready} onPointerDown={beginTrim} onKeyDown={e=>trimKey(e,updateEnd)} onChange={e=>updateEnd(Number(e.target.value))}/>
+        <input className="video-trim-range" type="range" aria-label="Начало фрагмента" min={0} max={duration||1} step="0.001" value={start} disabled={busy||!ready} onPointerDown={beginTrim} onPointerMove={moveTrim} onPointerUp={finishTrim} onKeyDown={e=>trimKey(e,updateStart)} onChange={e=>updateStart(Number(e.target.value))}/>
+        <input className="video-trim-range" type="range" aria-label="Конец фрагмента" min={0} max={duration||1} step="0.001" value={end} disabled={busy||!ready} onPointerDown={beginTrim} onPointerMove={moveTrim} onPointerUp={finishTrim} onKeyDown={e=>trimKey(e,updateEnd)} onChange={e=>updateEnd(Number(e.target.value))}/>
         <div className="video-filmstrip__playhead"/>
       </div>
       <div className="video-transport"><button className="video-play-button" aria-label={playing?"Пауза":"Воспроизвести"} title="Плей / пауза (Пробел)" disabled={!ready||busy||cropOn} onClick={()=>void togglePlay()}><VideoIcon name={playing?"pause":"play"}/>{playing?"Пауза":"Плей"}</button>
@@ -194,7 +208,7 @@ export function VideoEditor(){
     <footer className="video-export"><label>Формат <span className="video-format">{["mp4","gif"].map(f=><button key={f} aria-pressed={format===f} disabled={busy} onClick={()=>{setFormat(f);}}>{f.toUpperCase()}</button>)}</span></label>
       {format==="mp4"?<label>Качество <ThemedSelect label="Качество видео" value={quality} disabled={busy} onChange={setQuality} options={[{value:"small",label:"Компактно"},{value:"balanced",label:"Баланс"},{value:"sharp",label:"Чёткий текст"}]}/></label>:<><label>Ширина <ThemedSelect label="Ширина GIF" value={String(gifWidth)} disabled={busy} onChange={v=>setGifWidth(Number(v))} options={[480,640,800,960].map(w=>({value:String(w),label:String(w)}))}/></label><label>Частота <ThemedSelect label="Частота GIF" value={String(gifFps)} disabled={busy} onChange={v=>setGifFps(Number(v))} options={[{value:"10",label:"10 кадров/с"},{value:"15",label:"15 кадров/с"}]}/></label></>}
       <span className="video-export__size">{format==="mp4"?`≈ ${size(estimate)}`:"GIF без звука"}</span>
-      <div className="video-save-wrap"><button className="video-save" disabled={!ready||busy||cropOn||selected<.1} title="Нажмите для сохранения, удерживайте для быстрых мест" onPointerDown={savePointerDown} onClick={saveClick}><VideoIcon name="save"/>{status?.phase==="exporting"?`Сохранение ${status.exportPercent}%`:dialogBusy?"Сохранение…":`Сохранить ${format.toUpperCase()}`}</button>{quickOpen?<div className="video-quick" role="menu" aria-label="Быстрые места сохранения">{config?.screenshotQuickLocations?.length?config.screenshotQuickLocations.map((loc,i)=><button type="button" role="menuitem" key={`${loc.path}-${i}`} data-video-quick={i} className={hoverQuick===i?"is-hover":""} onClick={()=>void saveVideo(loc)}><strong>{loc.name}</strong><span>{loc.path}</span></button>):<div className="video-quick__empty">Места не настроены</div>}</div>:null}</div>
+      <div className="video-save-wrap"><button className="video-save" disabled={!ready||busy||cropOn||selected<.1} title="Нажмите для сохранения, удерживайте для быстрых мест" onPointerEnter={quickHover.enter} onPointerLeave={quickHover.leave} onPointerDown={savePointerDown} onClick={saveClick}><VideoIcon name="save"/>{status?.phase==="exporting"?`Сохранение ${status.exportPercent}%`:dialogBusy?"Сохранение…":`Сохранить ${format.toUpperCase()}`}</button>{quickOpen?<div className="video-quick" onPointerEnter={quickHover.menuEnter} onPointerLeave={quickHover.leave} role="menu" aria-label="Быстрые места сохранения">{config?.screenshotQuickLocations?.length?config.screenshotQuickLocations.map((loc,i)=><button type="button" role="menuitem" key={`${loc.path}-${i}`} data-video-quick={i} className={hoverQuick===i?"is-hover":""} onClick={()=>void saveVideo(loc)}><strong>{loc.name}</strong><span>{loc.path}</span></button>):<div className="video-quick__empty">Места не настроены</div>}</div>:null}</div>
       {status?.phase==="exporting"?<button onClick={()=>void invoke("snipcast_video_cancel_export")}>Отменить сохранение</button>:null}
     </footer>
     {(error||status?.error)?<div className="video-message video-message--error" role="alert">{error||status?.error}</div>:null}

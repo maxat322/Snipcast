@@ -1,0 +1,8 @@
+
+> snipcast@0.36.6 test:changed
+> node scripts/test-changed.mjs --files src/video/VideoApp.tsx src/video/video.css
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 1
+Проверка: Видео: только интерфейс редактора
+{"hoverDelay": true, "menuTransition": true, "noExportOnHover": true, "leaveCloses": true, "normalClick": true, "disabledButton": true, "trimPointerAndCursor": true, "oneClickOneExport": true}

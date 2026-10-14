@@ -1,12 +1,13 @@
 {
   "name": "snipcast",
   "private": true,
-  "version": "0.36.5",
+  "version": "0.36.10",
   "engines": {
     "node": ">=20.19.0"
   },
   "type": "module",
   "scripts": {
+    "test:changed": "node scripts/test-changed.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",

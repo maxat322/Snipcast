@@ -16,7 +16,7 @@ type Gesture = {
 );
 type Options = { scene: AnnotationScene; select: (id: number | null) => void;
   leaveTool: () => void; nextId: () => number; color: string; fontSize: number;
-  outlineColor?: string; outlineWidth?: number };
+  outlineColor?: string; outlineWidth?: number; opacity?:number };
 const point = (e: { clientX: number; clientY: number }): Pt => ({ x: e.clientX, y: e.clientY });
 
 export function useTextTool(options: Options) {
@@ -79,10 +79,10 @@ export function useTextTool(options: Options) {
     gesture.owner.setPointerCapture(gesture.pointerId);
   }, []);
   const beginCreate = useCallback((e: React.PointerEvent<HTMLElement>) => {
-    const { nextId, color, fontSize, select, outlineColor, outlineWidth } = optionsRef.current;
+    const { nextId, color, fontSize, select, outlineColor, outlineWidth,opacity } = optionsRef.current;
     const p1 = point(e);
     const seed: TextShape = { id: nextId(), kind: "text", color, fontSize, p1, p2: p1,
-      text: "", textMode: "auto", width: 0, minHeight: 0, outlineColor, outlineWidth };
+      text: "", textMode: "auto", width: 0, minHeight: 0, outlineColor, outlineWidth,opacity };
     select(null);
     capture({ mode: "create", seed, start: p1, latest: p1, moved: false,
       pointerId: e.pointerId, owner: e.currentTarget });

@@ -618,6 +618,7 @@ fn create_capture_window(app: &AppHandle, c: &MonitorCapture) -> Result<(), Stri
 /// Завершить сессию: прячем живые оверлеи (не уничтожаем — повторный захват
 /// открывается мгновенно) и удаляем temp-файлы сессии.
 pub fn close_capture(app: &AppHandle) {
+    crate::capture_keyboard::close();
     crate::video::selection_cancelled(app);
     let labels: Vec<String> = {
         let state = app.state::<Mutex<ScreenshotState>>();
@@ -649,6 +650,7 @@ pub fn close_capture(app: &AppHandle) {
 
 /// Оверлей закрыли извне (Alt+F4 и т.п.) — чистим сессию и реестр живых окон.
 pub fn on_capture_window_destroyed(app: &AppHandle, label: &str) {
+    crate::capture_keyboard::close();
     let state = app.state::<Mutex<ScreenshotState>>();
     let mut st = state.lock().expect("screenshot state poisoned");
     st.overlay_labels.retain(|l| l != label);
@@ -892,6 +894,8 @@ fn show_session_overlays(app: &AppHandle) {
         for (label, image_name) in wins {
             if let Some(win) = app2.get_webview_window(&label) {
                 if win.show().is_err() { continue; }
+                let config=app2.state::<Mutex<AppConfig>>().lock().ok().map(|c|c.clone());
+                if let Some(config)=config {if let Err(error)=crate::capture_keyboard::show(&win,&config){log_capture_error("клавиши выделения",&error);}}
                 if focus_label.as_deref() == Some(label.as_str()) {
                     let _ = win.set_focus();
                 }
@@ -921,6 +925,8 @@ fn show_overlay_now(app: &AppHandle, label: &str) {
         use tauri::Emitter as _;
         if let Some(win) = app2.get_webview_window(&label2) {
             if win.show().is_ok() {
+                let config=app2.state::<Mutex<AppConfig>>().lock().ok().map(|c|c.clone());
+                if let Some(config)=config {if let Err(error)=crate::capture_keyboard::show(&win,&config){log_capture_error("клавиши выделения",&error);}}
                 let _ = win.emit("snipcast://capture-shown", image_name);
             }
         }
@@ -1673,8 +1679,25 @@ fn run_capture_job_inner(
         st.save_seq
     };
     let rect = job_rect(app, job)?;
-    let img = capture_image(rect.0, rect.1, rect.2, rect.3)?;
-    finalize_job(Some(app), cfg, job, img, rect, seq)
+    let full = virtual_screen_rect(app)?;
+    // A fullscreen preset pressed during selection must export the frozen
+    // source, without the interactive overlay, toolbar or Alt guides.
+    let active_source = {
+        let state = app.state::<Mutex<ScreenshotState>>();
+        let st = state.lock().map_err(|e| e.to_string())?;
+        st.captures.iter().find(|c| (c.x,c.y,c.width,c.height)==full &&
+            app.get_webview_window(&c.label).is_some_and(|w|w.is_visible().unwrap_or(false))).map(|c|c.file.clone())
+    };
+    let source_image = if let Some(path) = active_source {
+        image::open(path).map_err(|e|format!("исходный экран: {e}"))?.to_rgba8()
+    } else { capture_image(full.0, full.1, full.2, full.3)? };
+    let img = image::imageops::crop_imm(&source_image,(rect.0-full.0) as u32,(rect.1-full.1) as u32,rect.2,rect.3).to_image();
+    let result=finalize_job(Some(app), cfg, job, img, rect, seq)?;
+    let source=encode_png(&source_image);
+    if let Err(err)=crate::capture_history::record(&source,(full.0,full.1),(full.2,full.3),crate::capture_history::Region{x:(rect.0-full.0) as u32,y:(rect.1-full.1) as u32,width:rect.2,height:rect.3}) {
+        log_capture_error("история скриншотов",&err);
+    }
+    Ok(result)
 }
 
 /// Прямоугольник захвата для джобы: заданная область (с обрезкой по экрану)

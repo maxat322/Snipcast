@@ -1,0 +1,8 @@
+
+> snipcast@0.36.8 test:changed
+> node scripts/test-changed.mjs --focus capture-editor --files src/capture/CaptureOverlay.tsx src/SettingsApp.tsx
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 1
+Проверка: Захват: возврат подсказок, заливка, прозрачность, настройки
+[{"theme": "dark", "scale": 1, "hintReturnsHome": true, "fillCenterSelectable": true, "opacityPreviewAndExport": true, "contourFillUndo": true, "ellipseFill": true, "textOpacity": true}, {"theme": "light", "scale": 1, "hintReturnsHome": true, "fillCenterSelectable": true, "opacityPreviewAndExport": true, "contourFillUndo": true, "ellipseFill": true, "textOpacity": true}, {"theme": "dark", "scale": 1.5, "hintReturnsHome": true, "fillCenterSelectable": true, "opacityPreviewAndExport": true, "contourFillUndo": true, "ellipseFill": true, "textOpacity": true}, {"theme": "light", "scale": 1.5, "hintReturnsHome": true, "fillCenterSelectable": true, "opacityPreviewAndExport": true, "contourFillUndo": true, "ellipseFill": true, "textOpacity": true}, {"theme": "dark", "scale": 2, "hintReturnsHome": true, "fillCenterSelectable": true, "opacityPreviewAndExport": true, "contourFillUndo": true, "ellipseFill": true, "textOpacity": true}, {"theme": "light", "scale": 2, "hintReturnsHome": true, "fillCenterSelectable": true, "opacityPreviewAndExport": true, "contourFillUndo": true, "ellipseFill": true, "textOpacity": true}, {"settingsTheme": "dark", "fiveHotkeysOneList": true}, {"settingsTheme": "light", "fiveHotkeysOneList": true}]

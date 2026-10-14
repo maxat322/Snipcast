@@ -1,0 +1,23 @@
+
+> snipcast@0.36.6 tauri
+> tauri build --no-bundle
+
+        Info Looking up installed tauri packages to check mismatched versions...
+        Warn The bundle identifier "com.snipcast.app" set in `"tauri.conf.json" identifier` ends with `.app`. This is not recommended because it conflicts with the application bundle extension on macOS.
+     Running beforeBuildCommand `npm run build`
+
+> snipcast@0.36.6 build
+> tsc && vite build
+
+vite v7.3.2 building client environment for production...
+transforming...
+✓ 74 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.90 kB │ gzip:   0.45 kB
+dist/assets/index-Beyk0t5Q.css   74.72 kB │ gzip:  12.80 kB
+dist/assets/index-CyA5NcXS.js   419.87 kB │ gzip: 127.96 kB
+✓ built in 1.51s
+   Compiling snipcast v0.36.6 (C:\Users\designer\Desktop\Dev\Snipcast\src-tauri)
+    Finished `release` profile [optimized] target(s) in 1m 58s
+       Built application at: C:\Users\designer\Desktop\Dev\Snipcast\src-tauri\target\release\snipcast.exe

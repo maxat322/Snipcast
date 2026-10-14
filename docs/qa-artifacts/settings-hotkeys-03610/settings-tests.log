@@ -1,0 +1,8 @@
+
+> snipcast@0.36.10 test:changed
+> node scripts/test-changed.mjs --files src/components/ClearHotkeyButton.tsx package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json --focus settings-hotkeys
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 1
+Проверка: Настройки: подписи, очистка и возврат горячих клавиш
+[{"theme": "dark", "width": 950, "labels": true, "icons": true, "clearAllFive": true, "resetDefaults": true, "preservesOtherSettings": true, "saveFailure": true, "recording": true, "noOverlap": true}, {"theme": "dark", "width": 720, "labels": true, "icons": true, "clearAllFive": true, "resetDefaults": true, "preservesOtherSettings": true, "saveFailure": true, "recording": true, "noOverlap": true}, {"theme": "light", "width": 950, "labels": true, "icons": true, "clearAllFive": true, "resetDefaults": true, "preservesOtherSettings": true, "saveFailure": true, "recording": true, "noOverlap": true}, {"theme": "light", "width": 720, "labels": true, "icons": true, "clearAllFive": true, "resetDefaults": true, "preservesOtherSettings": true, "saveFailure": true, "recording": true, "noOverlap": true}]

@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 from playwright.sync_api import sync_playwright, expect
 from capture_text import drag
 
-OUT=Path(__file__).resolve().parents[1]/'dist'/'pin-annotation-qa'
+OUT=Path(__file__).resolve().parents[1]/'.qa-work'/'pin-annotation-qa'
 OUT.mkdir(parents=True,exist_ok=True)
 BASE='http://localhost:1420/'
 
@@ -151,7 +151,7 @@ with sync_playwright() as p:
     q=quick.bounding_box();page.mouse.move(q['x']+q['width']/2,q['y']+q['height']/2);page.mouse.up()
     page.wait_for_function('qa.files.length===1');assert page.evaluate('qa.files[0].path')=='C:/qa/quick.png'
     assert page.locator('.capture__toolbar').count()==1 and page.evaluate('qa.closed')==0
-    page.get_by_title('Добавить текст (5)',exact=True).click();page.mouse.click(220,200)
+    page.get_by_title('Добавить текст (5)',exact=True).click();page.mouse.click(450,300)
     editor=page.locator('.capture__text-edit');editor.fill('Текст');page.keyboard.press('c')
     assert editor.input_value()=='Текстc' and page.evaluate('qa.copied.length')==0
     page.keyboard.press('Enter');expect(editor).to_be_visible();assert page.evaluate('qa.files.length')==1

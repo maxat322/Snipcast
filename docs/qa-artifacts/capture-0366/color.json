@@ -1,0 +1,36 @@
+[
+  {
+    "image": "gradient",
+    "format": "png",
+    "meanAbsoluteColorError": 0.0,
+    "bytes": 260301
+  },
+  {
+    "image": "gradient",
+    "format": "jpeg",
+    "meanAbsoluteColorError": 0.47661168981481483,
+    "bytes": 26725
+  },
+  {
+    "image": "gradient",
+    "format": "pin-preview",
+    "pixelsExact": true
+  },
+  {
+    "image": "bundled-photo",
+    "format": "png",
+    "meanAbsoluteColorError": 0.0,
+    "bytes": 271105
+  },
+  {
+    "image": "bundled-photo",
+    "format": "jpeg",
+    "meanAbsoluteColorError": 1.0932450810185186,
+    "bytes": 54892
+  },
+  {
+    "image": "bundled-photo",
+    "format": "pin-preview",
+    "pixelsExact": true
+  }
+]

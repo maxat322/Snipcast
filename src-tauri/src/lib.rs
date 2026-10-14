@@ -11,6 +11,8 @@ mod pin_transition;
 mod template_files;
 mod updater;
 mod video;
+mod capture_history;
+mod capture_keyboard;
 
 #[cfg(target_os = "windows")]
 mod paddle;
@@ -379,6 +381,7 @@ fn snipcast_save_config(
     // Комбинации проверяем только когда их реально меняли: неверный хоткей
     // не должен мешать сохранить тему, автозапуск и остальные настройки.
     let mut incoming = incoming;
+    validate_capture_action_hotkeys(&incoming)?;
     if hotkey_changed && !incoming.palette_hotkey.trim().is_empty() {
         if let Err(e) = Shortcut::from_str(incoming.palette_hotkey.trim()) {
             // Оставляем прежнюю рабочую комбинацию, всё остальное сохраняем.
@@ -445,6 +448,48 @@ fn snipcast_save_config(
 }
 
 /// Проверить комбинации пресетов без применения.
+fn validate_capture_action_hotkeys(cfg:&data::AppConfig)->Result<(),String> {
+    let mut used=HashSet::new();
+    for (label,value) in [("Сохранить",&cfg.screenshot_save_hotkey),("Закрепить",&cfg.screenshot_pin_hotkey),("Копировать",&cfg.screenshot_copy_hotkey)] {
+        if value.trim().is_empty(){continue;}
+        let shortcut=Shortcut::from_str(value.trim()).map_err(|e|format!("{label}: неверная комбинация ({e})"))?;
+        let base=value.split('+').filter(|v|!v.eq_ignore_ascii_case("alt")).collect::<Vec<_>>().join("+");
+        let base=Shortcut::from_str(&base).unwrap_or(shortcut);
+        if !used.insert(base){return Err("Горячие клавиши действий должны различаться".into());}
+        if cfg.screenshot_presets.iter().map(|p|p.hotkey.as_str()).chain([cfg.palette_hotkey.as_str(),cfg.screenshot_hotkey.as_str()])
+            .any(|key|!key.is_empty()&&Shortcut::from_str(key).ok()==Some(shortcut)) {return Err(format!("{label}: комбинация занята глобальной горячей клавишей"));}
+        let upper=value.to_ascii_uppercase();let main=upper.rsplit('+').next().unwrap_or("");
+        let bare=upper.split('+').all(|part|part==main||matches!(part,"ALT"|"SHIFT"));
+        let reserved=bare && matches!(main,"A"|"V"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"NUMPAD1"|"NUMPAD2"|"NUMPAD3"|"NUMPAD4"|"NUMPAD5"|"NUMPAD6"|"NUMPAD7"|"NUMPAD8"|"MINUS"|"EQUAL"|"NUMPADADD"|"NUMPADSUBTRACT"|"ARROWLEFT"|"ARROWRIGHT"|"ARROWUP"|"ARROWDOWN");
+        let undo=["CommandOrControl+Z","CommandOrControl+Shift+Z","CommandOrControl+Y","Control+Z","Control+Shift+Z","Control+Y","Shift+Equal"].iter()
+            .any(|v|Shortcut::from_str(v).ok()==Some(base));
+        if reserved||main=="ESCAPE"||undo{return Err(format!("{label}: эта комбинация используется в редакторе"));}
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod capture_hotkey_tests {
+    use super::*;
+    #[test]
+    fn defaults_and_control_remapping_are_valid() {
+        let mut cfg=data::AppConfig::default();assert!(validate_capture_action_hotkeys(&cfg).is_ok());
+        cfg.screenshot_copy_hotkey="CommandOrControl+K".into();assert!(validate_capture_action_hotkeys(&cfg).is_ok());
+    }
+    #[test]
+    fn alt_does_not_allow_duplicate_actions() {
+        let mut cfg=data::AppConfig::default();cfg.screenshot_copy_hotkey="Alt+Enter".into();
+        assert!(validate_capture_action_hotkeys(&cfg).is_err());
+    }
+    #[test]
+    fn tool_and_undo_conflicts_include_shift_and_alt() {
+        let mut cfg=data::AppConfig::default();
+        for value in ["1","Shift+1","Alt+Shift+1","Shift+V","NumpadSubtract","Alt+CommandOrControl+Z"] {
+            cfg.screenshot_copy_hotkey=value.into();assert!(validate_capture_action_hotkeys(&cfg).is_err(),"{value}");
+        }
+    }
+}
+
 fn validate_preset_hotkeys(cfg: &data::AppConfig) -> Result<(), String> {
     let mut seen: HashSet<Shortcut> = HashSet::new();
     for (label, combo) in [
@@ -904,6 +949,16 @@ fn snipcast_ocr_languages() -> Vec<String> {
 }
 
 pub fn run() {
+    #[cfg(target_os="windows")]
+    {
+        // GDI sources already contain the display's RGB values. WebView2's
+        // monitor-profile conversion would transform them a second time.
+        // Set this before creating the shared environment; retain QA/debug args.
+        let args=std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
+        if !args.split_whitespace().any(|arg|arg=="--force-color-profile=srgb") {
+            std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",format!("{args} --force-color-profile=srgb"));
+        }
+    }
     // Файл прошлой версии занят, пока она работает, — убираем его уже после перезапуска.
     updater::cleanup_after_update();
 
@@ -1070,7 +1125,11 @@ pub fn run() {
             video::snipcast_video_export,
             video::snipcast_video_cancel_export,
             snipcast_start_screenshot,
+            capture_history::snipcast_capture_history_list,
+            capture_history::snipcast_capture_history_open,
+            capture_history::snipcast_capture_history_record,
             snipcast_close_capture,
+            capture_keyboard::snipcast_capture_keyboard_state,
             snipcast_capture_ready,
             snipcast_capture_info,
             snipcast_capture_image_data,

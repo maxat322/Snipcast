@@ -1,0 +1,56 @@
+[
+  {
+    "theme": "dark",
+    "scale": 1,
+    "historyAndAltHints": true,
+    "singleSaturatedRow": true,
+    "shapeTextOutline": true,
+    "neutralBorders": true,
+    "hintsInViewport": true
+  },
+  {
+    "theme": "light",
+    "scale": 1,
+    "historyAndAltHints": true,
+    "singleSaturatedRow": true,
+    "shapeTextOutline": true,
+    "neutralBorders": true,
+    "hintsInViewport": true
+  },
+  {
+    "theme": "dark",
+    "scale": 1.5,
+    "historyAndAltHints": true,
+    "singleSaturatedRow": true,
+    "shapeTextOutline": true,
+    "neutralBorders": true,
+    "hintsInViewport": true
+  },
+  {
+    "theme": "light",
+    "scale": 1.5,
+    "historyAndAltHints": true,
+    "singleSaturatedRow": true,
+    "shapeTextOutline": true,
+    "neutralBorders": true,
+    "hintsInViewport": true
+  },
+  {
+    "theme": "dark",
+    "scale": 2,
+    "historyAndAltHints": true,
+    "singleSaturatedRow": true,
+    "shapeTextOutline": true,
+    "neutralBorders": true,
+    "hintsInViewport": true
+  },
+  {
+    "theme": "light",
+    "scale": 2,
+    "historyAndAltHints": true,
+    "singleSaturatedRow": true,
+    "shapeTextOutline": true,
+    "neutralBorders": true,
+    "hintsInViewport": true
+  }
+]

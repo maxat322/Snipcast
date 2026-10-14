@@ -52,6 +52,11 @@ export type AppConfig = {
   theme: UiThemeSetting;
   paletteListDensity: PaletteListDensity;
   screenshotHotkey: string;
+  screenshotSaveHotkey?:string;
+  screenshotPinHotkey?:string;
+  screenshotCopyHotkey?:string;
+  screenshotPresetDefaultsVersion?:number;
+  screenshotPresetNotice?:string;
   screenshotFormat: ScreenshotFormat;
   screenshotJpegQuality: number;
   screenshotFileTemplate: string;

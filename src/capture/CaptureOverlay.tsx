@@ -27,6 +27,8 @@ import { CaptureShortcuts, type HintMotion } from "./CaptureShortcuts";
 import {waitForPinPaint,type PinEditGeometry} from "./pinGeometry";
 import "../capture.css";
 import {ThemedSelect} from "../components/ThemedSelect";
+import {useQuickSaveHover} from "../components/useQuickSaveHover";
+import {actionHotkeyLabel,matchesAction,drawCenterGuides} from "./actionHotkeys";
 import {VideoIcon} from "../video/VideoApp";
 
 type PresetInfo = {
@@ -66,14 +68,9 @@ type Drag =
 
 
 const SWATCHES = [
-  "#ff4d4d", // красный — по умолчанию
-  "#5164f2",
-  "#ff7d72",
-  "#f1bf66",
-  "#f4f4f8",
-  "#2fb344",
-  "#22b8cf",
-  "#e64980",
+  "#ff003c", // насыщенный красный — по умолчанию
+  "#003cff", "#ff4f00", "#ffff00", "#ffffff",
+  "#00ff32", "#00f5ff", "#ff00a8", "#000000", "#b000ff",
 ];
 const HANDLES: HandleId[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const MIN_SEL = 10;
@@ -362,6 +359,16 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
 
   const [info, setInfo] = useState<CaptureInfo | null>(null);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const [sourcePlacement,setSourcePlacement]=useState<Rect|null>(null);
+  const sourcePlacementRef=useRef<Rect|null>(null);sourcePlacementRef.current=sourcePlacement;
+  const [altHeld,setAltHeld]=useState(false);const altHeldRef=useRef(false);
+  const [historyPosition,setHistoryPosition]=useState(-1);
+  const historyCursor=useRef(-1),historyRequest=useRef(0),historyLoading=useRef(false),historyUrl=useRef<string|null>(null),historySourceId=useRef<string|null>(null);
+  type HistoryEntry={id:string;width:number;height:number;originX:number;originY:number;selection:{x:number;y:number;width:number;height:number}};
+  const historyEntries=useRef<HistoryEntry[]>([]);
+  const [historyCount,setHistoryCount]=useState(0);
+  const currentCapture=useRef<{info:CaptureInfo|null;url:string|null;selection:Rect|null;scene:ReturnType<typeof scene.snapshot>;placement:Rect|null;scale:number;viewport:{w:number;h:number};tool:ShapeKind|null;selectedId:number|null}|null>(null);
+  const historyNavigation=useRef<(direction:number)=>Promise<void>>(async()=>{});
   const [loadError, setLoadError] = useState("");
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [vp, setVp] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
@@ -395,6 +402,8 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   /** Форма инструмента «Фигура»: прямоугольник/квадрат/круг/овал. */
   const [shapeKind, setShapeKind] = useState<ShapeKind>("rect");
   const [drawThickness, setDrawThickness] = useState(4);
+  const [drawOpacity,setDrawOpacity]=useState(1);
+  const [drawFill,setDrawFill]=useState(false);
   const [textSize, setTextSize] = useState(22);
   const [textOutlineColor,setTextOutlineColor]=useState("#000000");
   const [textOutlineWidth,setTextOutlineWidth]=useState(2);
@@ -410,6 +419,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   const [toast, setToast] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [hoverQuick, setHoverQuick] = useState<number | null>(null);
+  const quickHover=useQuickSaveHover(setQuickOpen,busy);
   const [tbSize, setTbSize] = useState<{ w: number; h: number } | null>(null);
   const [optsSize,setOptsSize]=useState({w:0,h:0});
 
@@ -437,6 +447,9 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   const infoRef = useRef<CaptureInfo | null>(null);
   infoRef.current = info;
   const setSel=useCallback((r:Rect|null)=>{
+    const bounds=sourcePlacementRef.current;
+    if(r&&bounds){const x=Math.max(bounds.x,Math.min(r.x,bounds.x+bounds.w)),y=Math.max(bounds.y,Math.min(r.y,bounds.y+bounds.h));
+      r={x,y,w:Math.max(0,Math.min(r.x+r.w,bounds.x+bounds.w)-x),h:Math.max(0,Math.min(r.y+r.h,bounds.y+bounds.h)-y)};}
     const i=infoRef.current,v=vpRef.current;
     physicalSelection.current=r&&i?{x:i.x+r.x*i.width/v.w,y:i.y+r.y*i.height/v.h,w:r.w*i.width/v.w,h:r.h*i.height/v.h}:null;
     selRef.current=r;renderSel(r);
@@ -456,12 +469,20 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   toolRef.current = tool;
   const textTool = useTextTool({ scene, select: setSelectedId, leaveTool: () => setTool(null),
     nextId: () => idSeqRef.current++, color: drawColor, fontSize: textSize,
-    outlineColor:textOutlineColor,outlineWidth:textOutlineEnabled?textOutlineWidth:0 });
+    outlineColor:textOutlineColor,outlineWidth:textOutlineEnabled?textOutlineWidth:0,opacity:drawOpacity });
   const textToolRef = useRef(textTool);
   textToolRef.current = textTool;
   const edit = textTool.edit;
 
   const demo = isDemoMode();
+  useEffect(()=>{
+    if(demo||pinEditor)return;
+    const update=()=>{const target=document.activeElement;void invoke("snipcast_capture_keyboard_state",{
+      textInput:target instanceof HTMLElement&&!!target.closest("textarea,input,[contenteditable=true]"),suspended:busy,
+    }).catch(error=>console.error("[Snipcast] capture keyboard",error));};
+    update();window.addEventListener("focusin",update);window.addEventListener("focusout",update);
+    return()=>{window.removeEventListener("focusin",update);window.removeEventListener("focusout",update);};
+  },[demo,!!pinEditor,busy,edit?.key]);
   /** Номер сессии захвата: окно живое, при каждом новом показе +1 → перезагрузка. */
   const [sessionSeq, setSessionSeq] = useState(0);
   const pinEditorRef = useRef(pinEditor);
@@ -508,6 +529,64 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     candidatesListenerRef.current = un;
     return () => { dead = true; void un.then(f => f()); };
   }, [demo, !!pinEditor]);
+
+  useEffect(()=>{
+    if(demo||pinEditor)return;let alive=true;historyRequest.current++;historyCursor.current=-1;historySourceId.current=null;currentCapture.current=null;
+    sourcePlacementRef.current=null;setSourcePlacement(null);setHistoryPosition(-1);
+    if(historyUrl.current){URL.revokeObjectURL(historyUrl.current);historyUrl.current=null;}
+    void invoke<HistoryEntry[]>("snipcast_capture_history_list").then(entries=>{if(alive){historyEntries.current=entries;setHistoryCount(entries.length);}}).catch(()=>{});
+    return()=>{alive=false;historyRequest.current++;if(historyUrl.current){URL.revokeObjectURL(historyUrl.current);historyUrl.current=null;}};
+  },[sessionSeq,demo,!!pinEditor]);
+  useEffect(()=>{
+    const update=(e:KeyboardEvent)=>{altHeldRef.current=e.altKey;setAltHeld(e.altKey);if(e.key==="Alt")e.preventDefault();};
+    const clear=()=>{altHeldRef.current=false;setAltHeld(false);};
+    window.addEventListener("keydown",update,true);window.addEventListener("keyup",update,true);window.addEventListener("blur",clear);
+    return()=>{window.removeEventListener("keydown",update,true);window.removeEventListener("keyup",update,true);window.removeEventListener("blur",clear);};
+  },[]);
+  const historyContext=()=>{
+    if(demo||pinEditorRef.current)return null;const r=selRef.current,i=infoRef.current,scale=kRef.current,b=sourcePlacementRef.current;
+    if(!r||!i)return null;
+    return {name:historySourceId.current??i.imageName,selection:{x:Math.max(0,Math.round((r.x-(b?.x??0))*scale)),y:Math.max(0,Math.round((r.y-(b?.y??0))*scale)),
+      width:Math.max(1,Math.round(r.w*scale)),height:Math.max(1,Math.round(r.h*scale))}};
+  };
+  const persistHistory=async(context:ReturnType<typeof historyContext>)=>{if(!context)return;
+    try{await invoke("snipcast_capture_history_record",context);}catch(err){console.error("[Snipcast] screenshot history",err);}
+  };
+  historyNavigation.current=async(direction:number)=>{
+    if(demo||pinEditorRef.current||infoRef.current?.videoSelection||dragRef.current||textToolRef.current.gestureRef.current||(busyRef.current&&!historyLoading.current))return;
+    if(!historyEntries.current.length)return;
+    const next=Math.max(-1,Math.min(historyEntries.current.length-1,historyCursor.current+direction));if(next===historyCursor.current)return;
+    const seq=++historyRequest.current;
+    if(historyCursor.current===-1){textToolRef.current.commit();currentCapture.current={info:infoRef.current,url:imgUrl,selection:selRef.current,scene:scene.snapshot(),placement:sourcePlacementRef.current,scale:kRef.current,viewport:vpRef.current,tool:toolRef.current,selectedId:selectedIdRef.current};}
+    historyCursor.current=next;historyLoading.current=true;setBusy(true);
+    try{
+      if(next===-1){const saved=currentCapture.current;if(!saved)return;
+        const view=vpRef.current,source=saved.info;const fit=source?Math.min(view.w/source.width,view.h/source.height):1;
+        const placement=source?{x:(view.w-source.width*fit)/2,y:(view.h-source.height*fit)/2,w:source.width*fit,h:source.height*fit}:null;
+        const ratio=source?fit*saved.scale:1;
+        sourcePlacementRef.current=placement;setSourcePlacement(placement);setInfo(source);setImgUrl(saved.url);scene.restore(saved.scene);
+        if(saved.placement)scene.translate(-saved.placement.x,-saved.placement.y);if(ratio!==1)scene.scale(ratio,ratio);if(placement&&(placement.x||placement.y))scene.translate(placement.x,placement.y);
+        setSel(saved.selection?{x:(saved.selection.x-(saved.placement?.x??0))*ratio+(placement?.x??0),y:(saved.selection.y-(saved.placement?.y??0))*ratio+(placement?.y??0),w:saved.selection.w*ratio,h:saved.selection.h*ratio}:null);
+        setTool(saved.tool);setSelectedId(saved.selectedId);
+        historySourceId.current=null;setHistoryPosition(-1);
+      }else{
+        const item=historyEntries.current[next]!;
+        const loaded=await invoke<{entry:HistoryEntry;png:string}>("snipcast_capture_history_open",{id:item.id});
+        const binary=Uint8Array.from(atob(loaded.png),c=>c.charCodeAt(0));const url=URL.createObjectURL(new Blob([binary],{type:"image/png"}));
+        const image=new Image();image.src=url;try{await image.decode();}catch{URL.revokeObjectURL(url);throw new Error("Повреждённый снимок истории");}
+        if(seq!==historyRequest.current){URL.revokeObjectURL(url);return;}
+        const entry=loaded.entry,view=vpRef.current;const fit=Math.min(view.w/entry.width,view.h/entry.height);
+        const placement={x:(view.w-entry.width*fit)/2,y:(view.h-entry.height*fit)/2,w:entry.width*fit,h:entry.height*fit};
+        sourcePlacementRef.current=placement;setSourcePlacement(placement);setK(1/fit);
+        if(historyUrl.current)URL.revokeObjectURL(historyUrl.current);historyUrl.current=url;
+        historySourceId.current=entry.id;setInfo({...currentCapture.current!.info!,candidates:[],preset:undefined});setImgUrl(url);
+        scene.reset();setTool(null);setSelectedId(null);setSelecting(false);
+        setSel({x:placement.x+entry.selection.x*fit,y:placement.y+entry.selection.y*fit,w:entry.selection.width*fit,h:entry.selection.height*fit});setHistoryPosition(next);
+      }
+    }catch(err){
+      if(seq===historyRequest.current){const broken=historyCursor.current;historyEntries.current.splice(broken,1);setHistoryCount(historyEntries.current.length);historyCursor.current=direction>0?broken-1:broken;showToast("error",String(err));void historyNavigation.current(direction);}
+    }finally{if(seq===historyRequest.current){historyLoading.current=false;setBusy(false);}}
+  };
 
   // Загрузка: инфо о захвате + PNG-байты + конфиг
   useEffect(() => {
@@ -615,7 +694,15 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   useEffect(() => {
     const onResize = () => {
       const next={w:window.innerWidth,h:window.innerHeight};
-      if(!pinEditorRef.current && infoRef.current){
+      const source=sourcePlacementRef.current;
+      if(source&&!pinEditorRef.current){
+        const image=imgRef.current;if(image){const fit=Math.min(next.w/image.naturalWidth,next.h/image.naturalHeight);
+          const bounds={x:(next.w-image.naturalWidth*fit)/2,y:(next.h-image.naturalHeight*fit)/2,w:image.naturalWidth*fit,h:image.naturalHeight*fit};
+          const ratio=bounds.w/source.w,r=selRef.current;scene.translate(-source.x,-source.y);scene.scale(ratio,ratio);scene.translate(bounds.x,bounds.y);
+          sourcePlacementRef.current=bounds;setSourcePlacement(bounds);setK(1/fit);
+          if(r)setSel({x:bounds.x+(r.x-source.x)*ratio,y:bounds.y+(r.y-source.y)*ratio,w:r.w*ratio,h:r.h*ratio});
+        }
+      }else if(!pinEditorRef.current && infoRef.current){
         const old=vpRef.current,s=physicalSelection.current,i=infoRef.current;
         const sx=next.w/old.w,sy=next.h/old.h;
         if(s){const resized={x:(s.x-i.x)*next.w/i.width,y:(s.y-i.y)*next.h/i.height,w:s.w*next.w/i.width,h:s.h*next.h/i.height};selRef.current=resized;renderSel(resized);}
@@ -658,7 +745,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   };
   recordingAction.current=startVideo;
 
-  const flattenSelection = useCallback((): string => {
+  const flattenSelection = useCallback((includeGuides=false): string => {
     const snapshot = textToolRef.current.commit();
     const r = selRef.current;
     if (!r) return "";
@@ -668,22 +755,20 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     cvs.height = Math.max(1, Math.round(r.h * kw));
     const ctx = cvs.getContext("2d");
     if (!ctx) return "";
-    ctx.scale(kw, kw);
-    ctx.translate(-r.x, -r.y);
-    const { w, h } = vpRef.current;
-    const img = imgRef.current;
-    if (img && img.naturalWidth > 0) {
-      if (pinEditorRef.current) ctx.drawImage(img,r.x,r.y,r.w,r.h);
-      else ctx.drawImage(img, 0, 0, w, h);
-    } else {
-      ctx.fillStyle = "#8a8a96";
-      ctx.fillRect(0, 0, w, h);
-    }
+    const img=imgRef.current,b=sourcePlacementRef.current;
+    if(img&&img.naturalWidth>0){
+      const x=pinEditorRef.current?0:Math.max(0,Math.round((r.x-(b?.x??0))*kw));
+      const y=pinEditorRef.current?0:Math.max(0,Math.round((r.y-(b?.y??0))*kw));
+      const width=Math.min(cvs.width,img.naturalWidth-x),height=Math.min(cvs.height,img.naturalHeight-y);
+      ctx.drawImage(img,x,y,width,height,0,0,width,height);
+    }else{ctx.fillStyle="#8a8a96";ctx.fillRect(0,0,cvs.width,cvs.height);}
+    ctx.scale(kw,kw);ctx.translate(-r.x,-r.y);
     ctx.save();
     ctx.beginPath();
     ctx.rect(r.x, r.y, r.w, r.h);
     ctx.clip();
     for (const s of snapshot) drawShape(ctx, s, 1);
+    if(includeGuides)drawCenterGuides(ctx,r,kw);
     ctx.restore();
     return cvs.toDataURL("image/png").split(",")[1] ?? "";
   }, []);
@@ -694,15 +779,17 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
 
   const runCopy = useCallback(async () => {
     if (!selRef.current || busy) return;
+    const history=historyContext(),includeGuides=altHeldRef.current;
     setBusy(true);
     try {
-      const png = flattenSelection();
+      const png = flattenSelection(includeGuides);
       if (demo) {
         console.log("[demo] snipcast_capture_copy: png base64 length", png.length);
         showToast("ok", "Скопировано (демо)");
         return;
       }
       await invoke("snipcast_capture_copy", { png });
+      await persistHistory(history);
       if (pinEditorRef.current) showToast("ok","Скопировано");
       else await invoke("snipcast_close_capture");
     } catch (e) {
@@ -772,6 +859,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   const saveWithDialog = useCallback(
     async (preset?: PresetInfo) => {
       if (!selRef.current || busy) return;
+      const history=historyContext(),includeGuides=altHeldRef.current;
       setBusy(true);
       try {
         const ext = cfgRef.current?.screenshotFormat === "jpeg" ? "jpg" : "png";
@@ -805,8 +893,9 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
           ],
         });
         if (!path) return;
-        const png = flattenSelection();
+        const png = flattenSelection(includeGuides);
         await invoke("snipcast_capture_save", { png, path });
+        await persistHistory(history);
         if (pinEditorRef.current) showToast("ok", "Сохранено в файл");
         else await invoke("snipcast_close_capture");
       } catch (e) {
@@ -821,6 +910,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   const saveToQuick = useCallback(
     async (loc: { name: string; path: string }) => {
       if (!selRef.current || busy) return;
+      const history=historyContext(),includeGuides=altHeldRef.current;
       setBusy(true);
       setQuickOpen(false);
       try {
@@ -831,8 +921,9 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         }
         const ext = cfgRef.current?.screenshotFormat === "jpeg" ? "jpg" : "png";
         const path = await invoke<string>("snipcast_capture_save_path", { dir: loc.path, ext });
-        const png = flattenSelection();
+        const png = flattenSelection(includeGuides);
         await invoke("snipcast_capture_save", { png, path });
+        await persistHistory(history);
         if (pinEditorRef.current) showToast("ok", `Сохранено: ${loc.name}`);
         else await invoke("snipcast_close_capture");
       } catch (e) {
@@ -849,14 +940,15 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     const r = selRef.current;
     const inf = infoRef.current;
     if (!r || !inf || busy) return;
+    const history=historyContext(),includeGuides=altHeldRef.current;
     setBusy(true);
     try {
-      const png = flattenSelection();
+      const png = flattenSelection(includeGuides);
       const kw = kRef.current || 1;
       const box = {
         png,
-        x: inf.x + Math.round(r.x * kw),
-        y: inf.y + Math.round(r.y * kw),
+        x: inf.x + Math.round(r.x * (sourcePlacementRef.current?(window.devicePixelRatio||1):kw)),
+        y: inf.y + Math.round(r.y * (sourcePlacementRef.current?(window.devicePixelRatio||1):kw)),
         width: Math.max(1, Math.round(r.w * kw)),
         height: Math.max(1, Math.round(r.h * kw)),
       };
@@ -865,6 +957,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         return;
       }
       await invoke("snipcast_capture_pin", box);
+      await persistHistory(history);
       await invoke("snipcast_close_capture");
     } catch (e) {
       showToast("error", String(e));
@@ -918,9 +1011,10 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   const runPresetSave = useCallback(
     async (preset: PresetInfo) => {
       if (!selRef.current || busy) return;
+      const history=historyContext(),includeGuides=altHeldRef.current;
       setBusy(true);
       try {
-        const png = flattenSelection();
+        const png = flattenSelection(includeGuides);
         if (demo) {
           console.log("[demo] пресет-сохранение без диалога:", preset.title);
           showToast("ok", "Сохранено (демо)");
@@ -935,6 +1029,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
           template: template || undefined,
         });
         await invoke("snipcast_capture_save", { png, path });
+        await persistHistory(history);
         await invoke("snipcast_close_capture");
       } catch (e) {
         showToast("error", String(e));
@@ -978,6 +1073,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   );
 
   const onRootPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    altHeldRef.current=e.altKey;setAltHeld(e.altKey);
     if (pinEditor && busy) return;
     if (e.button !== 0) return;
     const t = e.target as HTMLElement;
@@ -1040,7 +1136,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         scene.begin();
         strokeSamples.current=[];
         dragRef.current = { mode: "draw", start: pt };
-        const initial:Shape={ id: nextShapeId(), kind: activeDrawKind(), color: drawColor, thickness: drawThickness, p1: pt, p2: pt }; draftRef.current=initial;setDraft(initial);
+        const initial:Shape={ id: nextShapeId(), kind: activeDrawKind(), color: drawColor, thickness: drawThickness, filled:drawFill,opacity:drawOpacity,p1: pt, p2: pt }; draftRef.current=initial;setDraft(initial);
         return;
       }
       // Инструмент не активен: первый драг снимает выбор фигуры, дальше — рамка.
@@ -1060,7 +1156,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
       scene.begin();
       strokeSamples.current=[];
       dragRef.current = { mode: "draw", start: pt };
-      const initial:Shape={ id: nextShapeId(), kind: activeDrawKind(), color: drawColor, thickness: drawThickness, p1: pt, p2: pt }; draftRef.current=initial;setDraft(initial);
+      const initial:Shape={ id: nextShapeId(), kind: activeDrawKind(), color: drawColor, thickness: drawThickness, filled:drawFill,opacity:drawOpacity,p1: pt, p2: pt }; draftRef.current=initial;setDraft(initial);
       return;
     }
 
@@ -1199,11 +1295,15 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         setShapes((prev) =>
           prev.map((s) => {
             if (s.id !== d.id) return s;
+            let target=pt;
+            const fixed=d.point===1?d.orig.p2:d.orig.p1;
+            if(e.shiftKey&&["line","arrow"].includes(s.kind))target=Math.abs(pt.x-fixed.x)>=Math.abs(pt.y-fixed.y)?{x:pt.x,y:fixed.y}:{x:fixed.x,y:pt.y};
+            if(s.kind==="square"||s.kind==="circle"){const side=Math.max(Math.abs(pt.x-fixed.x),Math.abs(pt.y-fixed.y));target={x:fixed.x+(pt.x>=fixed.x?1:-1)*side,y:fixed.y+(pt.y>=fixed.y?1:-1)*side};}
             return d.point === 1
               ? s.kind === "text"
-                ? { ...s, p1: pt, p2: pt }
-                : { ...s, p1: pt }
-              : { ...s, p2: pt };
+                ? { ...s, p1: target, p2: target }
+                : { ...s, p1: target }
+              : { ...s, p2: target };
           }),
         );
       }
@@ -1307,6 +1407,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
 
   const onSavePointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
     if (e.button !== 0 || busy) return;
+    suppressClickRef.current=false;quickHover.cancel();
     const h = { timer: 0, fired: false };
     holdRef.current = h;
     h.timer = window.setTimeout(() => {
@@ -1355,7 +1456,10 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         closeCapture(); return;
       }
       if (text.editRef.current) return;
-      if(e.key==="Shift"&&dragRef.current?.mode==="draw"&&lastGesturePoint.current){
+      if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&(e.code==="Minus"||e.code==="Equal"||e.code==="NumpadSubtract"||e.code==="NumpadAdd")){
+        e.preventDefault();void historyNavigation.current(e.code==="Minus"||e.code==="NumpadSubtract"?1:-1);return;
+      }
+      if(e.key==="Shift"&&["draw","shapePoint"].includes(dragRef.current?.mode??"")&&lastGesturePoint.current){
         const p=lastGesturePoint.current;window.dispatchEvent(new PointerEvent("pointermove",{clientX:p.x,clientY:p.y,shiftKey:true}));return;
       }
       if(busyRef.current)return;
@@ -1376,10 +1480,11 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         return;
       }
       if(selRef.current&&!dragRef.current&&!text.gestureRef.current){
-        if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.code==="KeyC") {e.preventDefault();if(!e.repeat)void keyActions.current.copy();return;}
-        if(e.key==="Enter"&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();if(!e.repeat)void keyActions.current.save();return;}
+        if(matchesAction(e,cfgRef.current,"copy")){e.preventDefault();void keyActions.current.copy();return;}
+        if(matchesAction(e,cfgRef.current,"save")){e.preventDefault();void keyActions.current.save();return;}
+        if(matchesAction(e,cfgRef.current,"pin")&&!pinEditorRef.current){e.preventDefault();void keyActions.current.pin();return;}
         if(!e.ctrlKey&&!e.metaKey&&!e.altKey){
-          if(e.code==="Space"&&!pinEditorRef.current){e.preventDefault();if(!e.repeat)void keyActions.current.pin();return;}
+
           const kinds:ShapeKind[]=["arrow","line","rect","freehand","text"];
           const digit=Number(/^(?:Digit|Numpad)([1-8])$/.exec(e.code)?.[1]);
           if(digit>=1&&digit<=5){e.preventDefault();if(!e.repeat){setTool(kinds[digit-1]!);setSelectedId(null);}return;}
@@ -1445,7 +1550,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     };
     window.addEventListener("keydown", onKey, true);
     const onKeyUp=(e:KeyboardEvent)=>{
-      if(e.key==="Shift"&&dragRef.current?.mode==="draw"&&draftRef.current?.kind!=="freehand"&&lastGesturePoint.current){const p=lastGesturePoint.current;
+      if(e.key==="Shift"&&["draw","shapePoint"].includes(dragRef.current?.mode??"")&&draftRef.current?.kind!=="freehand"&&lastGesturePoint.current){const p=lastGesturePoint.current;
         window.dispatchEvent(new PointerEvent("pointermove",{clientX:p.x,clientY:p.y,shiftKey:false}));}
     };
     window.addEventListener("keyup",onKeyUp,true);
@@ -1527,20 +1632,14 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   const theme = cfg ? resolveUiTheme(normalizeUiTheme(cfg.theme)) : "dark";
 
   const quickLocs = cfg?.screenshotQuickLocations ?? [];
-  const toolLabels: Record<ShapeKind, string> = {
-    line: "Линия",
-    rect: "Фигура",
-    square: "Квадрат",
-    ellipse: "Овал",
-    circle: "Круг",
-    arrow: "Стрелка",
-    text: "Текст",
-    freehand:"Свободное рисование",
-  };
-
   const isTextContext = !!edit || selectedShape?.kind === "text" || tool === "text";
-  const optsTool = isTextContext ? "text" : tool;
+  const optsTool = isTextContext ? "text" : tool??selectedShape?.kind;
   const optsRef=useRef<HTMLDivElement>(null);
+  const anchorKind=optsTool&&["square","circle","ellipse"].includes(optsTool)?"rect":optsTool;
+  const button=anchorKind?tbRef.current?.querySelector<HTMLElement>(`[data-tool-anchor="${anchorKind}"]`):null;
+  const anchor=button?.getBoundingClientRect();
+  const optsPlace=place?{left:Math.max(place.bounds.x+8,Math.min((anchor?anchor.x+anchor.width/2:place.left+30)-optsSize.w/2,place.bounds.x+place.bounds.w-optsSize.w-8)),
+    top:place.bottom+8+optsSize.h<=place.bounds.y+place.bounds.h-8?place.bottom+8:Math.max(place.bounds.y+8,place.top-optsSize.h-8)}:null;
   const pinLayoutRequest=useRef({busy:false,again:false,run:null as (()=>void)|null,lastKey:""});
   useEffect(()=>{
     if(!pinEditor||demo||pinEditor.sessionId==null)return;
@@ -1561,8 +1660,9 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     if(optsRef.current&&place){
       const el=optsRef.current,r=el.getBoundingClientRect(),b=place.bounds;
       el.style.right="auto";
-      el.style.left=`${Math.max(b.x+8,Math.min(vp.w-place.right-r.width,b.x+b.w-r.width-8))}px`;
-      el.style.top=`${Math.max(b.y+8,Math.min(place.bottom+8,b.y+b.h-r.height-8))}px`;
+      const anchor=anchorKind?tbRef.current?.querySelector<HTMLElement>(`[data-tool-anchor="${anchorKind}"]`)?.getBoundingClientRect():null;
+      el.style.left=`${Math.max(b.x+8,Math.min((anchor?anchor.x+anchor.width/2:place.left+30)-r.width/2,b.x+b.w-r.width-8))}px`;
+      el.style.top=`${place.bottom+8+r.height<=b.y+b.h-8?place.bottom+8:Math.max(b.y+8,place.top-r.height-8)}px`;
     }
     if(!pinEditor||demo||pinEditor.sessionId==null)return;
     const request=pinLayoutRequest.current;
@@ -1596,6 +1696,13 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     return()=>{observer.disconnect();cancelAnimationFrame(frame);if(request.run===schedule)request.run=null;};
   },[!!pinEditor,pinEditor?.revision,place?.left,place?.top,optsTool,optsSize,selectedId,toast?.text,quickOpen,vp,edit?.shape]);
   const activeColor = edit?.shape.color ?? selectedShape?.color ?? drawColor;
+  const activeOpacity=edit?.shape.opacity??selectedShape?.opacity??drawOpacity;
+  const activeFill=selectedShape&&selectedShape.kind!=="text"?(selectedShape.filled??false):drawFill;
+  const applyOpacity=(opacity:number)=>{setDrawOpacity(opacity);
+    if(textTool.editRef.current)textTool.update({opacity});
+    else if(selectedShape)scene.change(prev=>prev.map(s=>s.id===selectedShape.id?{...s,opacity}:s));};
+  const applyFill=(filled:boolean)=>{setDrawFill(filled);
+    if(selectedShape&&["rect","square","ellipse","circle"].includes(selectedShape.kind))scene.change(prev=>prev.map(s=>s.id===selectedShape.id?{...s,filled}:s));};
   const activeSize = edit?.shape.fontSize ?? (selectedShape?.kind === "text" ? selectedShape.fontSize : textSize);
   const textBaseWidth=Math.max(1,sel?.w??pinRect?.w??vp.w);
   const sizePercent=activeSize/textBaseWidth*100;
@@ -1639,10 +1746,12 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     <div
       ref={rootRef}
       className={`capture${presented ? " capture--presented" : ""}${pinEditor ? " capture--pin-editor" : ""}`}
+      data-capture-image={info?.imageName}
       data-capture-theme={theme}
       style={{ cursor: tool ? "crosshair" : hoverText ? "move" : undefined }}
       onPointerDown={onRootPointerDown}
       onPointerMove={(e) => {
+        if(altHeldRef.current!==e.altKey){altHeldRef.current=e.altKey;setAltHeld(e.altKey);}
         textTool.onPointerMove(e);
         if (!(e.target as HTMLElement).closest(".capture__ui, .capture__text-edit-wrap")) {
           const pt = { x: e.clientX, y: e.clientY };
@@ -1671,7 +1780,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         <img
           ref={imgRef}
           className="capture__shot"
-          style={pinRect ? { left:pinRect.x, top:pinRect.y, width:pinRect.w, height:pinRect.h } : undefined}
+          style={pinRect||sourcePlacement ? {left:(pinRect??sourcePlacement)!.x,top:(pinRect??sourcePlacement)!.y,width:(pinRect??sourcePlacement)!.w,height:(pinRect??sourcePlacement)!.h,right:"auto",bottom:"auto"} : undefined}
           src={imgUrl}
           alt=""
           draggable={false}
@@ -1722,6 +1831,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         pinEditor ? null : <div className="capture__dim capture__dim--full" />
       )}
 
+      {altHeld&&sel&&!info?.videoSelection?<svg className="capture__guides" width={vp.w} height={vp.h} aria-hidden><path style={{strokeWidth:1/k,strokeDasharray:`${8/k} ${6/k}`}} d={`M ${sel.x+sel.w/2} 0 V ${vp.h} M 0 ${sel.y+sel.h/2} H ${vp.w}`} /></svg>:null}
       <canvas ref={canvasRef} className="capture__shapes" />
       {draft?<canvas ref={draftCanvasRef} className="capture__shapes capture__shapes--draft" />:null}
 
@@ -1740,7 +1850,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
             className="capture__dimchip"
             style={{ left: visibleRect.x, top: visibleRect.y >= 36 ? visibleRect.y - 32 : visibleRect.y + 6 }}
           >
-            {Math.round(visibleRect.w * k)} × {Math.round(visibleRect.h * k)}
+            {Math.round(visibleRect.w * k)} × {Math.round(visibleRect.h * k)}{historyPosition>=0?` · История ${historyPosition+1}/${historyCount}`:""}
           </div>
         </>
       ) : null}
@@ -1757,7 +1867,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
       {(!sel || selecting) && pointer && pixelSource && info ? <CaptureLoupe
         source={pixelSource} pointer={pointer} info={info} viewport={vp} format={colorFormat} onSample={onPixelSample} /> : null}
       {!pinEditor?<CaptureShortcuts info={info} viewport={vp} session={sessionSeq} cursor={pointerRef} motion={hintMotion}
-        selected={!!sel} gesture={dragRef.current?.mode??(textTool.frame?"text":undefined)} editing={!!edit}
+        actionKeys={{save:actionHotkeyLabel(cfg,"save"),pin:actionHotkeyLabel(cfg,"pin"),copy:actionHotkeyLabel(cfg,"copy")}} selected={!!sel} gesture={dragRef.current?.mode??(textTool.frame?"text":undefined)} editing={!!edit}
         selectedShape={selectedId!=null} tool={tool} mode={detectionMode}/>:null}
 
       {/* Выбранная фигура: габарит + ключевые точки (точки — в координатах окна) */}
@@ -1804,7 +1914,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
                 type="button"
                 title={`${t.title} (${i+1})`}
                 disabled={busy}
-                className={`capture__btn${tool === t.kind ? " is-active" : ""}`}
+                data-tool-anchor={t.kind} className={`capture__btn${tool === t.kind ? " is-active" : ""}`}
                 onClick={() => { textTool.commit(); setSelectedId(null); setTool((prev) => (prev === t.kind ? null : t.kind)); }}
               >
                 {t.icon}
@@ -1815,8 +1925,8 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
             {!info?.videoSelection?<span className="capture__toolbar-sep" aria-hidden />:null}
 
             {pinEditor ? <>
-              <button type="button" title="Сохранить как файл" className="capture__btn" disabled={busy} onPointerDown={onSavePointerDown} onClick={onSaveClick}>
-                <IconSave /><span>Сохранить</span><kbd className="capture__tool-key">Enter</kbd>
+              <button type="button" title="Сохранить как файл" className="capture__btn" disabled={busy} onPointerEnter={quickHover.enter} onPointerLeave={quickHover.leave} onPointerDown={onSavePointerDown} onClick={onSaveClick}>
+                <IconSave /><span>Сохранить</span>{actionHotkeyLabel(cfg,"save")?<kbd className="capture__tool-key">{actionHotkeyLabel(cfg,"save")}</kbd>:null}
               </button>
               <button type="button" className="capture__btn" disabled={busy} onClick={() => void applyPinAnnotations()} title="Применить аннотации к закрепу">
                 <SvgIcon><path d="m5 12 4 4L19 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></SvgIcon><span>Готово</span>
@@ -1826,7 +1936,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
               </button>
             </> : info?.videoSelection ? <>
               <div className="capture__video-config"><label>Плавность <ThemedSelect label="Частота кадров записи" value={String(videoFps)} disabled={busy} onChange={v=>setVideoFps(Number(v))} options={[{value:"15",label:"15 кадров/с"},{value:"30",label:"30 кадров/с"}]}/></label><label><input type="checkbox" checked={videoAudio} disabled={busy} onChange={e=>setVideoAudio(e.target.checked)}/>Звук системы</label></div>
-              <button type="button" className="capture__btn is-active" disabled={busy} onClick={()=>void startVideo()} title="Начать запись области"><VideoIcon name="video"/><span>Записать</span><kbd className="capture__tool-key">Enter</kbd></button>
+              <button type="button" className="capture__btn is-active" disabled={busy} onClick={()=>void startVideo()} title="Начать запись области"><VideoIcon name="video"/><span>Записать</span>{actionHotkeyLabel(cfg,"save")?<kbd className="capture__tool-key">{actionHotkeyLabel(cfg,"save")}</kbd>:null}</button>
               <button type="button" className="capture__btn" disabled={busy} onClick={closeCapture}><VideoIcon name="close"/><span>Отмена</span><kbd className="capture__tool-key">Esc</kbd></button>
             </> : <>
 
@@ -1865,12 +1975,12 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
               title="Сохранить как файл"
               className="capture__btn"
               disabled={busy}
-              onPointerDown={onSavePointerDown}
+              onPointerEnter={quickHover.enter} onPointerLeave={quickHover.leave} onPointerDown={onSavePointerDown}
               onClick={onSaveClick}
             >
               <IconSave />
               <span>Сохранить</span>
-              <kbd className="capture__tool-key">Enter</kbd>
+              {actionHotkeyLabel(cfg,"save")?<kbd className="capture__tool-key">{actionHotkeyLabel(cfg,"save")}</kbd>:null}
             </button>
             <button
               type="button"
@@ -1881,7 +1991,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
             >
               <IconPin />
               <span>Закрепить</span>
-              <kbd className="capture__tool-key">Пробел</kbd>
+              {actionHotkeyLabel(cfg,"pin")?<kbd className="capture__tool-key">{actionHotkeyLabel(cfg,"pin")}</kbd>:null}
             </button>
             </>}
             {!info?.videoSelection?<button
@@ -1893,7 +2003,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
             >
               <IconCopy />
               <span>Копировать</span>
-              <kbd className="capture__tool-key">C</kbd>
+              {actionHotkeyLabel(cfg,"copy")?<kbd className="capture__tool-key">{actionHotkeyLabel(cfg,"copy")}</kbd>:null}
             </button>:null}
           </div>
         ) : null}
@@ -1903,9 +2013,8 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
             ref={optsRef}
             className="capture__opts"
             onPointerDown={(e) => { if ((e.target as HTMLElement).closest("button")) e.preventDefault(); }}
-            style={{ right: place.right, top: place.bottom + 8 }}
+            style={optsPlace??undefined}
           >
-            <div className="capture__opts-title">{toolLabels[optsTool]}</div>
             {optsTool === "rect" ? (
               <div className="capture__opts-shapes">
                 {(
@@ -1930,7 +2039,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
               </div>
             ) : null}
             <div className="capture__opts-swatches">
-              {SWATCHES.map((c) => (
+              {SWATCHES.map(c => (
                 <button
                   key={c}
                   type="button"
@@ -1941,6 +2050,12 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
                 />
               ))}
             </div>
+            {optsTool&&["rect","square","ellipse","circle"].includes(optsTool)?<div className="capture__shape-variants capture__fill-modes" role="group" aria-label="Режим фигуры">
+              {[{label:"Контур",filled:false},{label:"Заливка",filled:true}].map(option=><button key={option.label} type="button" aria-pressed={activeFill===option.filled}
+                className={`capture__shape-btn${activeFill===option.filled?" is-active":""}`} onClick={()=>applyFill(option.filled)}>{option.label}</button>)}
+            </div>:null}
+            <label className="capture__opts-row"><span>Прозрачность</span><input type="range" aria-label="Прозрачность" min={0} max={100} step={1} value={Math.round((1-activeOpacity)*100)}
+              onPointerDown={()=>{if(!edit)scene.begin();}} onPointerUp={()=>scene.finish()} onChange={e=>applyOpacity(1-Number(e.target.value)/100)}/><span className="capture__opts-value">{Math.round((1-activeOpacity)*100)}%</span></label>
             <label className="capture__opts-row">
               <span>Размер</span>
               <input type="range" aria-label={isTextContext ? "Размер текста" : "Толщина линии"}
@@ -1958,7 +2073,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
               <label className="capture__opts-row capture__outline-toggle"><input type="checkbox" aria-label="Обводка текста" checked={outlineEnabled}
                 onChange={e=>{setTextOutlineEnabled(e.target.checked);applyTextAppearance({outlineWidth:e.target.checked?outlineWidth:0,outlineColor});}}/><span>Обводка</span></label>
               {outlineEnabled?<>
-                <div className="capture__opts-swatches" aria-label="Цвет обводки">{["#000000","#ffffff",...SWATCHES.filter(c=>!["#000000","#ffffff"].includes(c.toLowerCase()))].map(c=>
+                <div className="capture__opts-swatches" aria-label="Цвет обводки">{SWATCHES.map(c=>
                   <button key={c} type="button" aria-label={`Цвет обводки ${c}`} className={`capture__swatch${outlineColor===c?" is-active":""}`} style={{background:c}}
                     onClick={()=>{setTextOutlineColor(c);applyTextAppearance({outlineColor:c});}}/>)}</div>
                 <label className="capture__opts-row"><span>Толщина обводки</span><input type="range" aria-label="Толщина обводки" min={1} max={12} step={1} value={outlineWidth}
@@ -1970,7 +2085,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         ) : null}
 
         {quickOpen && place ? (
-          <div className="capture__quick" style={{ right: place.right, top: place.bottom + 8 }}>
+          <div className="capture__quick" onPointerEnter={quickHover.menuEnter} onPointerLeave={quickHover.leave} style={{ right: place.right, top: place.bottom + 8 }}>
             {quickLocs.length > 0 ? (
               quickLocs.map((loc, i) => (
                 <button
@@ -1978,7 +2093,8 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
                   type="button"
                   data-quick-idx={i}
                   className={`capture__quick-item${hoverQuick === i ? " is-hover" : ""}`}
-                  tabIndex={-1}
+                  onClick={()=>{if(!holdRef.current)void saveToQuick(loc);}}
+                  tabIndex={0}
                   onPointerDown={(e) => e.preventDefault()}
                 >
                   <span className="capture__quick-name">{loc.name}</span>

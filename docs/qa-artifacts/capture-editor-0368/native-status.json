@@ -1,0 +1,10 @@
+{
+  "status": "deferred",
+  "reason": "User requested a later native run",
+  "preliminarySuccess": [
+    "bare C command interception and text input",
+    "Ctrl+F9 command interception and focus/dialog/close scenarios",
+    "Ctrl+Alt+F7 interception in one diagnostic run"
+  ],
+  "finalCombinedRun": "not passed; repeat when native input can be controlled"
+}

@@ -527,7 +527,6 @@ export function PinWindow() {
           })
           .catch((err) => console.error("[Snipcast] pin menu pos:", err));
       }}
-      title="ЛКМ — переместить · двойной клик — закрыть · колесо — масштаб · границы/углы — пропорционально · СКМ — закрыть · ПКМ — меню"
     >
       {url ? (
         <img className="pin__shot" src={url} alt="" draggable={false} />

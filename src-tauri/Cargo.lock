@@ -4201,7 +4201,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "snipcast"
-version = "0.36.5"
+version = "0.36.10"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -4235,6 +4235,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tiny_http",
+ "webview2-com",
  "windows 0.61.3",
  "windows-sys 0.59.0",
  "zip",

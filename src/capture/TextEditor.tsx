@@ -64,7 +64,7 @@ export function TextEditor({ tool }: { tool: TextTool }) {
     <textarea key={session.key} ref={input} className="capture__text-edit"
       aria-label="Текст на скриншоте" defaultValue={session.original?.text ?? ""} rows={1} spellCheck={false}
       wrap={s.textMode === "frame" ? "soft" : "off"}
-      style={{ width: layout.w, height: layout.h, color: s.color, fontSize: s.fontSize,
+      style={{ width: layout.w, height: layout.h, color: s.color, fontSize: s.fontSize,opacity:s.opacity??1,
         fontFamily: TEXT_FONT, lineHeight: TEXT_LINE_HEIGHT,
         whiteSpace: s.textMode === "frame" ? "pre-wrap" : "pre",
         WebkitTextStroke:`${(s.outlineWidth??0)*2}px ${s.outlineColor??"#000000"}`,paintOrder:"stroke fill",

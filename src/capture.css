@@ -43,6 +43,12 @@ html.pin-root #root {
   transition: opacity 180ms ease-out;
 }
 
+.capture__guides {position:absolute;inset:0;pointer-events:none;z-index:2;overflow:visible;}
+.capture__guides path {fill:none;stroke:#3b82f6;stroke-width:1;stroke-dasharray:8 6;}
+.capture__opts .capture__opts-swatches {display:grid;grid-template-columns:repeat(10,20px);gap:6px;}
+.capture__opts .capture__swatch {box-sizing:border-box;border:1px solid #80808a;}
+.capture__fill-modes .capture__shape-btn {width:auto;flex:1;padding:4px 10px;}
+
 .capture__shot {
   position: absolute;
   inset: 0;

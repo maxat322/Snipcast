@@ -1,0 +1,70 @@
+[
+  {
+    "theme": "dark",
+    "scale": 1,
+    "hintReturnsHome": true,
+    "fillCenterSelectable": true,
+    "opacityPreviewAndExport": true,
+    "contourFillUndo": true,
+    "ellipseFill": true,
+    "textOpacity": true
+  },
+  {
+    "theme": "light",
+    "scale": 1,
+    "hintReturnsHome": true,
+    "fillCenterSelectable": true,
+    "opacityPreviewAndExport": true,
+    "contourFillUndo": true,
+    "ellipseFill": true,
+    "textOpacity": true
+  },
+  {
+    "theme": "dark",
+    "scale": 1.5,
+    "hintReturnsHome": true,
+    "fillCenterSelectable": true,
+    "opacityPreviewAndExport": true,
+    "contourFillUndo": true,
+    "ellipseFill": true,
+    "textOpacity": true
+  },
+  {
+    "theme": "light",
+    "scale": 1.5,
+    "hintReturnsHome": true,
+    "fillCenterSelectable": true,
+    "opacityPreviewAndExport": true,
+    "contourFillUndo": true,
+    "ellipseFill": true,
+    "textOpacity": true
+  },
+  {
+    "theme": "dark",
+    "scale": 2,
+    "hintReturnsHome": true,
+    "fillCenterSelectable": true,
+    "opacityPreviewAndExport": true,
+    "contourFillUndo": true,
+    "ellipseFill": true,
+    "textOpacity": true
+  },
+  {
+    "theme": "light",
+    "scale": 2,
+    "hintReturnsHome": true,
+    "fillCenterSelectable": true,
+    "opacityPreviewAndExport": true,
+    "contourFillUndo": true,
+    "ellipseFill": true,
+    "textOpacity": true
+  },
+  {
+    "settingsTheme": "dark",
+    "fiveHotkeysOneList": true
+  },
+  {
+    "settingsTheme": "light",
+    "fiveHotkeysOneList": true
+  }
+]

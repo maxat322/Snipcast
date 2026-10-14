@@ -1,0 +1,9 @@
+{
+  "embeddedCurrentAssets": true,
+  "qaIdentifierAbsent": true,
+  "srgbHandlingPresent": true,
+  "releaseFiles": [
+    "snipcast.exe",
+    "snipcast.exe.sha256"
+  ]
+}

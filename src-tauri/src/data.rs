@@ -98,6 +98,16 @@ pub struct AppConfig {
     // --- скриншоты ---
     #[serde(default = "default_screenshot_hotkey")]
     pub screenshot_hotkey: String,
+    #[serde(default="default_save_action_hotkey")]
+    pub screenshot_save_hotkey:String,
+    #[serde(default="default_pin_action_hotkey")]
+    pub screenshot_pin_hotkey:String,
+    #[serde(default="default_copy_action_hotkey")]
+    pub screenshot_copy_hotkey:String,
+    #[serde(default)]
+    pub screenshot_preset_defaults_version:u8,
+    #[serde(default)]
+    pub screenshot_preset_notice:String,
     /// "png" | "jpeg"
     #[serde(default = "default_screenshot_format")]
     pub screenshot_format: String,
@@ -158,6 +168,29 @@ fn default_screenshot_hotkey() -> String {
     DEFAULT_SCREENSHOT_HOTKEY.to_string()
 }
 
+fn default_save_action_hotkey()->String {"Enter".into()}
+fn default_pin_action_hotkey()->String {"Space".into()}
+fn default_copy_action_hotkey()->String {"C".into()}
+fn default_desktop_preset()->ScreenshotPreset {
+    ScreenshotPreset{id:"builtin-fullscreen-desktop".into(),title:"Весь экран на рабочий стол".into(),hotkey:"Alt+PrintScreen".into(),
+        dir:default_screenshot_save_dir(),file_template:"Snip {datetime}".into(),action:"save".into(),select:false}
+}
+fn migrate_screenshot_defaults(cfg:&mut AppConfig)->bool {
+    if cfg.screenshot_preset_defaults_version>=1{return false;}
+    let preset=default_desktop_preset();
+    let equivalent=cfg.screenshot_presets.iter().any(|p|p.id==preset.id || (!p.select && p.action=="save" && p.dir==preset.dir && p.file_template==preset.file_template && p.title==preset.title));
+    if !equivalent {
+        let mut preset=preset;
+        use std::str::FromStr;
+        use tauri_plugin_global_shortcut::Shortcut;
+        let target=Shortcut::from_str("Alt+PrintScreen").ok();
+        let occupied=cfg.screenshot_presets.iter().map(|p|p.hotkey.as_str()).chain([cfg.palette_hotkey.as_str(),cfg.screenshot_hotkey.as_str()])
+            .any(|h|!h.is_empty()&&Shortcut::from_str(h).ok()==target);
+        if occupied {preset.hotkey.clear();cfg.screenshot_preset_notice="Alt+PrintScreen уже используется. Стандартный пресет добавлен без горячей клавиши.".into();}
+        cfg.screenshot_presets.push(preset);
+    }
+    cfg.screenshot_preset_defaults_version=1;true
+}
 fn default_screenshot_format() -> String {
     "png".to_string()
 }
@@ -214,6 +247,11 @@ impl Default for AppConfig {
             theme: default_ui_theme(),
             palette_list_density: default_palette_list_density(),
             screenshot_hotkey: default_screenshot_hotkey(),
+            screenshot_save_hotkey:default_save_action_hotkey(),
+            screenshot_pin_hotkey:default_pin_action_hotkey(),
+            screenshot_copy_hotkey:default_copy_action_hotkey(),
+            screenshot_preset_defaults_version:1,
+            screenshot_preset_notice:String::new(),
             screenshot_format: default_screenshot_format(),
             screenshot_jpeg_quality: default_screenshot_jpeg_quality(),
             screenshot_file_template: default_screenshot_file_template(),
@@ -222,7 +260,7 @@ impl Default for AppConfig {
             screenshot_ocr_engine: default_screenshot_ocr_engine(),
             screenshot_ocr_language: String::new(),
             screenshot_ocr_quality: default_screenshot_ocr_quality(),
-            screenshot_presets: Vec::new(),
+            screenshot_presets: vec![default_desktop_preset()],
             api_enabled: false,
             api_port: default_api_port(),
             ai_api_key: String::new(),
@@ -519,12 +557,24 @@ pub fn load_config() -> Result<AppConfig, String> {
         return Ok(AppConfig::default());
     }
     let s = fs::read_to_string(&p).map_err(|e| e.to_string())?;
-    serde_json::from_str(&s).map_err(|e| e.to_string())
+    let mut cfg:AppConfig=serde_json::from_str(&s).map_err(|e|e.to_string())?;
+    if migrate_screenshot_defaults(&mut cfg){save_config(&cfg)?;}
+    Ok(cfg)
 }
 
 pub fn save_config(cfg: &AppConfig) -> Result<(), String> {
     let s = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
     write_atomic(&config_path(), &s)
+}
+
+#[cfg(test)]
+mod screenshot_defaults_tests {
+    use super::*;
+    #[test] fn old_config_has_action_defaults(){let cfg:AppConfig=serde_json::from_str("{}").unwrap();assert_eq!(cfg.screenshot_save_hotkey,"Enter");assert_eq!(cfg.screenshot_pin_hotkey,"Space");assert_eq!(cfg.screenshot_copy_hotkey,"C");}
+    #[test] fn default_preset_is_fullscreen(){let cfg=AppConfig::default();let p=&cfg.screenshot_presets[0];assert_eq!(p.hotkey,"Alt+PrintScreen");assert_eq!(p.file_template,"Snip {datetime}");assert!(!p.select);assert_eq!(p.dir,default_screenshot_save_dir());}
+    #[test] fn migration_is_once_and_preserves_delete(){let mut cfg=AppConfig::default();cfg.screenshot_presets.clear();cfg.screenshot_preset_defaults_version=0;assert!(migrate_screenshot_defaults(&mut cfg));assert_eq!(cfg.screenshot_presets.len(),1);cfg.screenshot_presets.clear();assert!(!migrate_screenshot_defaults(&mut cfg));assert!(cfg.screenshot_presets.is_empty());}
+    #[test] fn equivalent_is_not_duplicated(){let mut cfg=AppConfig::default();cfg.screenshot_presets[0].id="user-preset".into();cfg.screenshot_preset_defaults_version=0;migrate_screenshot_defaults(&mut cfg);assert_eq!(cfg.screenshot_presets.len(),1);assert_eq!(cfg.screenshot_presets[0].id,"user-preset");}
+    #[test] fn occupied_hotkey_preserves_user_preset(){let mut cfg=AppConfig::default();cfg.screenshot_presets[0].id="custom".into();cfg.screenshot_presets[0].title="My action".into();cfg.screenshot_preset_defaults_version=0;migrate_screenshot_defaults(&mut cfg);assert_eq!(cfg.screenshot_presets[0].hotkey,"Alt+PrintScreen");assert!(cfg.screenshot_presets[1].hotkey.is_empty());assert!(!cfg.screenshot_preset_notice.is_empty());}
 }
 
 pub fn load_variables_map() -> Result<serde_json::Map<String, serde_json::Value>, String> {

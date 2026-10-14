@@ -9,7 +9,7 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 
 BASE = os.environ.get("SNIPCAST_TEST_URL", "http://localhost:1420/?snipcast=capture")
-OUT = Path(__file__).resolve().parents[1] / "dist" / "text-qa"
+OUT = Path(__file__).resolve().parents[1] / ".qa-work" / "text-qa"
 OUT.mkdir(parents=True, exist_ok=True)
 RESULTS = []
 

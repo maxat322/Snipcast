@@ -7,7 +7,7 @@ from PIL import Image
 from playwright.sync_api import sync_playwright, expect
 from capture_text import BASE, drag
 
-OUT = Path(__file__).resolve().parents[1] / "dist" / "capture-assist-qa"
+OUT = Path(__file__).resolve().parents[1] / ".qa-work" / "capture-assist-qa"
 OUT.mkdir(parents=True, exist_ok=True)
 
 BRIDGE = r"""({png, scale, theme}) => {

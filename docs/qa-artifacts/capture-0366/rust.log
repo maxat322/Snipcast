@@ -1,0 +1,36 @@
+    Blocking waiting for file lock on build directory
+   Compiling snipcast v0.36.6 (C:\Users\designer\Desktop\Dev\Snipcast\src-tauri)
+    Finished `release` profile [optimized] target(s) in 1m 51s
+     Running unittests src\lib.rs (src-tauri\target\release\deps\snipcast_lib-6247facde9dc481a.exe)
+
+running 27 tests
+test ai::tests::sse_done_marker ... ok
+test ai::tests::sse_skip_empty_lines_and_comments ... ok
+test ai::tests::sse_chunk_splits_json_in_half ... ok
+test capture_detection::tests::disconnected_provider_keeps_window_fallback ... ok
+test ai::tests::sse_plain_delta ... ok
+test ai::tests::sse_multiple_lines_in_one_chunk ... ok
+test paddle::paddle::tests::paddle_smoke_if_models_present ... ok
+test data::screenshot_defaults_tests::default_preset_is_fullscreen ... ok
+test data::screenshot_defaults_tests::equivalent_is_not_duplicated ... ok
+test data::screenshot_defaults_tests::migration_is_once_and_preserves_delete ... ok
+test data::screenshot_defaults_tests::occupied_hotkey_preserves_user_preset ... ok
+test capture_hotkey_tests::alt_does_not_allow_duplicate_actions ... ok
+test data::screenshot_defaults_tests::old_config_has_action_defaults ... ok
+test paddle::paddle::tests::vocab_parse_shape ... ok
+test capture_hotkey_tests::defaults_and_control_remapping_are_valid ... ok
+test capture_hotkey_tests::tool_and_undo_conflicts_include_shift_and_alt ... ok
+test screenshot::capture_tests::virtual_desktop_negative_origin_and_gaps ... ok
+test updater::tests::compares_versions ... ok
+test updater::tests::parses_sha256_in_both_formats ... ok
+test updater::tests::schedule_start_resume_and_day_boundary ... ok
+test updater::tests::skip_one_version_and_dismiss_one_day ... ok
+test video::tests::invalid_ranges ... ok
+test video::tests::size_settings ... ok
+test video::tests::valid_ranges ... ok
+test capture_detection::tests::initial_snapshot_does_not_wait_for_element_discovery ... ok
+test data::tests::data_layer_survives_corruption ... ok
+test capture_detection::tests::stalled_provider_preserves_partial_results_and_returns_by_deadline ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+

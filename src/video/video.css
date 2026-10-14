@@ -57,8 +57,8 @@ html[data-app-theme="light"] .video-editor,html[data-app-theme="light"] .video-r
 .video-trim-range::-webkit-slider-thumb {appearance:none;width:var(--trim-handle-width);height:56px;margin-top:-1px;background:linear-gradient(var(--video-text),var(--video-text)) center/1px 12px no-repeat var(--video-accent);border:0;border-radius:4px;pointer-events:auto;cursor:ew-resize;}
 .video-filmstrip__playhead {position:absolute;left:var(--play-position);top:-2px;bottom:-2px;width:2px;background:var(--video-text);pointer-events:none;z-index:2;}
 .video-filmstrip__playhead:before {content:"";position:absolute;top:0;left:-3px;width:8px;height:5px;border-radius:2px;background:var(--video-text);}
-/* Native range drags own the mouse events; :active ends exactly on release. */
-.video-filmstrip:has(.video-trim-range:active) .video-filmstrip__playhead {display:none;}
+/* WebView2 may keep :active after a native range emits pointercancel. */
+.video-filmstrip[data-trimming="true"] .video-filmstrip__playhead {display:none;}
 .video-transport {display:flex;align-items:center;gap:9px;padding-top:6px;font-size:12px;}
 .video-editor .video-play-button {min-width:100px;background:var(--video-active);border-color:var(--video-accent);padding:6px 12px;}
 .video-time {font-family:Consolas,monospace;white-space:nowrap;}.video-time>span{color:var(--video-muted)}
