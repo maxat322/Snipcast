@@ -1,0 +1,50 @@
+[
+  {
+    "theme": "dark",
+    "width": 950,
+    "labels": true,
+    "icons": true,
+    "clearAllFive": true,
+    "resetDefaults": true,
+    "preservesOtherSettings": true,
+    "saveFailure": true,
+    "recording": true,
+    "noOverlap": true
+  },
+  {
+    "theme": "dark",
+    "width": 720,
+    "labels": true,
+    "icons": true,
+    "clearAllFive": true,
+    "resetDefaults": true,
+    "preservesOtherSettings": true,
+    "saveFailure": true,
+    "recording": true,
+    "noOverlap": true
+  },
+  {
+    "theme": "light",
+    "width": 950,
+    "labels": true,
+    "icons": true,
+    "clearAllFive": true,
+    "resetDefaults": true,
+    "preservesOtherSettings": true,
+    "saveFailure": true,
+    "recording": true,
+    "noOverlap": true
+  },
+  {
+    "theme": "light",
+    "width": 720,
+    "labels": true,
+    "icons": true,
+    "clearAllFive": true,
+    "resetDefaults": true,
+    "preservesOtherSettings": true,
+    "saveFailure": true,
+    "recording": true,
+    "noOverlap": true
+  }
+]

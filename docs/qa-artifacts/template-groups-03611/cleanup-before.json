@@ -1,0 +1,23 @@
+[
+  {
+    "path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\src-tauri\\target",
+    "bytes": null,
+    "bytesSource": "Cargo clean log: 2.1 GiB; intermediate path scan overlapped cleanup"
+  },
+  {
+    "path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\.qa-work",
+    "bytes": 144009.0
+  },
+  {
+    "path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist",
+    "bytes": 507364.0
+  },
+  {
+    "path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\node_modules\\.vite",
+    "bytes": 3010992.0
+  },
+  {
+    "path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\node_modules\\.vite-temp",
+    "bytes": null
+  }
+]

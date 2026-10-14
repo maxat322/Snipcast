@@ -1,0 +1,22 @@
+{
+  "target": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\.qa-work\\suggestions-defaults\\cargo-target",
+  "bytes": 2302057331.0,
+  "roots": [
+    {
+      "path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\.qa-work\\suggestions-defaults",
+      "bytes": 2297783359
+    },
+    {
+      "path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\.qa-work\\text-suggestions",
+      "bytes": 735842
+    },
+    {
+      "path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\node_modules\\.vite",
+      "bytes": 3010992
+    },
+    {
+      "path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist",
+      "bytes": 527138
+    }
+  ]
+}

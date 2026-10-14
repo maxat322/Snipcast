@@ -1,0 +1,8 @@
+
+> snipcast@0.36.11 test:changed
+> node scripts/test-changed.mjs --focus text-suggestions --files src/suggestions/suggestions.css tests/text_suggestions_ui.py
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 1
+Проверка: Подсказки: настройки, плашка, форма и отмена
+PASS: dark: settings and popup passed; light: settings and popup passed; quick form: first Enter on release; IME; latest edit; pages without scrolling; error/retry/cancel; attachments; ordinary palette unchanged

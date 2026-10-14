@@ -1,0 +1,7 @@
+
+> snipcast@0.36.11 test:changed
+> node scripts/test-changed.mjs --list --files src/SettingsApp.tsx src/Settings.css src/components/TemplateGroupTabs.tsx scripts/test-changed.mjs tests/template_groups_ui.py package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json --focus template-groups
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 1
+План: Шаблоны: перетаскивание групп и автосохранение

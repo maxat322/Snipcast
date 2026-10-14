@@ -87,6 +87,8 @@ pub struct TemplateRow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
+    #[serde(default)]
+    pub text_suggestions: crate::text_suggestions::SuggestionsConfig,
     #[serde(default = "default_palette_hotkey")]
     pub palette_hotkey: String,
     #[serde(default = "default_autostart")]
@@ -242,6 +244,7 @@ fn default_ai_model() -> String {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            text_suggestions: crate::text_suggestions::SuggestionsConfig::default(),
             palette_hotkey: DEFAULT_PALETTE_HOTKEY.to_string(),
             autostart: true,
             theme: default_ui_theme(),

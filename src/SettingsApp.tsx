@@ -14,6 +14,8 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {CaptureActionHotkeyField} from "./components/CaptureActionHotkeyField";
 import {ClearHotkeyButton} from "./components/ClearHotkeyButton";
+import {TemplateGroupTabs} from "./components/TemplateGroupTabs";
+import {SuggestionsSettings} from "./suggestions/SuggestionsSettings";
 import { createHotkeyRecorder, tauriHotkeyToDisplay } from "./hotkeyFormat";
 import type {
   AppConfig,
@@ -561,6 +563,12 @@ export function SettingsApp() {
   const [aiTestError, setAiTestError] = useState("");
 
   const [store, setStore] = useState<TemplateStore | null>(null);
+  const storeRef = useRef(store);
+  storeRef.current = store;
+  const templateSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingTemplateStore = useRef<TemplateStore | null>(null);
+  const templateSaveRevision = useRef(0);
+  const [reorderingGroups, setReorderingGroups] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   /** Ключи вида "0.1.2" для мультивыбора (Ctrl+клик). */
   const [selectedPathKeysArr, setSelectedPathKeysArr] = useState<string[]>([]);
@@ -613,10 +621,46 @@ export function SettingsApp() {
     [config, showError],
   );
 
-  const persistStore = useCallback(async (next: TemplateStore) => {
-    await invoke("snipcast_save_template_store", { store: next });
-    setStore(next);
+  const persistStore = useCallback(async (next: TemplateStore, optimistic = false) => {
+    const previous = pendingTemplateStore.current ?? storeRef.current;
+    const revision = ++templateSaveRevision.current;
+    pendingTemplateStore.current = next;
+    if (optimistic) {storeRef.current = next; setStore(next);}
+    // Serialize autosave and reordering; an older response must not restore old order.
+    const save = templateSaveQueue.current.then(() => invoke<void>("snipcast_save_template_store", { store: next }));
+    templateSaveQueue.current = save.catch(() => {});
+    try {
+      await save;
+      if (revision === templateSaveRevision.current) {
+        pendingTemplateStore.current = null;
+        storeRef.current = next;
+        setStore(next);
+      }
+    } catch (error) {
+      if (revision === templateSaveRevision.current) {
+        pendingTemplateStore.current = null;
+        if (optimistic && storeRef.current === next) {
+          storeRef.current = previous;
+          setStore(current => current === next ? previous : current);
+        }
+      }
+      throw error;
+    }
   }, []);
+
+  const moveTemplateGroup = async (id: string, targetId: string, after: boolean) => {
+    const current = pendingTemplateStore.current ?? storeRef.current;
+    if (!current || reorderingGroups || id === targetId) return;
+    const group = current.groups.find(item => item.id === id);
+    const groups = current.groups.filter(item => item.id !== id);
+    const target = groups.findIndex(item => item.id === targetId);
+    if (!group || target < 0) return;
+    groups.splice(target + (after ? 1 : 0), 0, group);
+    if (groups.every((item, index) => item.id === current.groups[index]?.id)) return;
+    setReorderingGroups(true);
+    try {await persistStore({...current, groups}, true);} catch (error) {showError(error);}
+    finally {setReorderingGroups(false);}
+  };
 
   const loadAll = useCallback(async () => {
     // Каждый кусок грузим независимо: одна битая часть (например, файл шаблонов)
@@ -684,6 +728,14 @@ export function SettingsApp() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  useEffect(()=>{
+    let live=true,off:(()=>void)|undefined;
+    void listen<NonNullable<AppConfig["textSuggestions"]>>("snipcast://suggestions-config",e=>{
+      if(live)setConfig(current=>current?{...current,textSuggestions:e.payload}:current);
+    }).then(fn=>{if(live)off=fn;else fn();}).catch(()=>{});
+    return()=>{live=false;off?.();};
+  },[]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -1032,11 +1084,13 @@ export function SettingsApp() {
   };
 
   const onHotkeyFocus = () => {
+    void invoke("snipcast_suggestions_hotkeys_pause").catch(()=>{});
     hotkeyRecorder.reset();
     void invoke("snipcast_palette_hotkey_pause").catch(() => {});
   };
 
   const onHotkeyBlur = () => {
+    void invoke("snipcast_suggestions_hotkeys_resume").catch(showError);
     hotkeyRecorder.reset();
     void invoke("snipcast_palette_hotkey_resume").catch(showError);
   };
@@ -1062,12 +1116,14 @@ export function SettingsApp() {
   };
 
   const onScreenshotHotkeyFocus = () => {
+    void invoke("snipcast_suggestions_hotkeys_pause").catch(()=>{});
     hotkeyRecorder.reset();
     setScreenshotHotkeyCapturing(true);
     void invoke("snipcast_screenshot_hotkey_pause").catch(() => {});
   };
 
   const onScreenshotHotkeyBlur = () => {
+    void invoke("snipcast_suggestions_hotkeys_resume").catch(showError);
     hotkeyRecorder.reset();
     setScreenshotHotkeyCapturing(false);
     void invoke("snipcast_screenshot_hotkey_resume").catch(showError);
@@ -1984,6 +2040,11 @@ export function SettingsApp() {
                   try{await saveConfig(next);setConfig(current=>current?{...current,[field]:value}:current);}catch(err){showError(err);}
                 }}/>):null}
               </div>
+              {config?<SuggestionsSettings value={config.textSuggestions} onSave={async textSuggestions=>{
+                const current=configRef.current;if(!current)return;
+                await saveConfig({...current,textSuggestions});
+                setConfig(prev=>prev?{...prev,textSuggestions}:prev);
+              }}/>:null}
             </div>
           </div>
         ) : null}
@@ -2597,20 +2658,9 @@ export function SettingsApp() {
               </div>
               <div className="settings__group-tags-row">
                 <span className="settings__group-tags-label">Группы:</span>
-                <div className="settings__group-tags">
-                  {store?.groups.map((g) => (
-                    <button
-                      key={g.id}
-                      type="button"
-                      className={`settings__group-tag${selectedGroupId === g.id ? " is-active" : ""}`}
-                      style={{ "--tag-color": g.color } as React.CSSProperties}
-                      onClick={() => setSelectedGroup(g.id)}
-                    >
-                      {g.title}
-                      {g.isMaster ? " •M" : ""}
-                    </button>
-                  ))}
-                </div>
+                <TemplateGroupTabs groups={store?.groups ?? []} selectedId={selectedGroupId}
+                  saving={reorderingGroups} onSelect={setSelectedGroup}
+                  onMove={(id, target, after) => void moveTemplateGroup(id, target, after)}/>
               </div>
             </div>
 

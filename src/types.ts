@@ -47,6 +47,7 @@ export type ScreenshotPreset = {
 };
 
 export type AppConfig = {
+  textSuggestions?: TextSuggestionsConfig;
   paletteHotkey: string;
   autostart: boolean;
   theme: UiThemeSetting;
@@ -70,6 +71,31 @@ export type AppConfig = {
   apiPort: number;
   aiApiKey: string;
   aiModel: string;
+};
+
+export type TextSuggestionsConfig = {
+  enabled: boolean;
+  mode: "trigger" | "automatic";
+  trigger: string;
+  searchText: boolean;
+  minChars: number;
+  toggleHotkey: string;
+  excludedApps: string[];
+};
+export type TextSuggestionsView = {
+  ready?: boolean;
+  session: number;
+  query: string;
+  hits: { id: string; title: string; path: string; preview: string }[];
+  selected: number;
+  theme: string;
+  placement: string;
+  form?: {session: number; text: string; title: string; pageSize?: number} | null;
+};
+export const DEFAULT_TEXT_SUGGESTIONS: TextSuggestionsConfig = {
+  enabled: true, mode: "automatic", trigger: "=",
+  searchText: false, minChars: 3,
+  toggleHotkey: "F9", excludedApps: [],
 };
 
 /** Одно сообщение чата ИИ-агента (история хранится на бэкене). */

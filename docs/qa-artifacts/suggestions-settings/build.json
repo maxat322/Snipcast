@@ -1,0 +1,13 @@
+{
+  "version": "0.36.11",
+  "features": "production; no inline-qa",
+  "bytes": 18194432,
+  "date": "2026-10-14T14:56:07.5237058Z",
+  "sha256": "818CADF8AAF1403D09DC1344391872A8E91DD60C859953157DF2840DAF2BBC4D",
+  "tests": [
+    "headless Chromium dark/light 880/720",
+    "7 core Rust tests",
+    "10 Windows Rust tests"
+  ],
+  "nativeInteractive": false
+}

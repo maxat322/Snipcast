@@ -617,14 +617,16 @@ function App() {
       } else {
         await invoke("paste_template", { text: body });
       }
+      return true;
     } catch {
       /* см. README: macOS — доступ */
+      return false;
     }
   }, []);
 
   const startInsert = useCallback(
-    (raw: string) => {
-      const afterVars = substituteVars(raw);
+    (raw: string, variablesResolved = false) => {
+      const afterVars = variablesResolved ? raw : substituteVars(raw);
       const fileRefs = extractFileLinkRefs(afterVars);
       const bodyText = stripFileLinkPlaceholders(afterVars);
       const labels = extractOrderedBracketLabels(bodyText);
@@ -673,8 +675,7 @@ function App() {
             const values = collectBracketValuesFromForm(form);
             values[activeLab] = clip;
             const merged = applyBracketReplacements(p.baseText, p.labels, values);
-            setBracketPrompt(null);
-            await pasteContent(merged, p.fileRefs);
+            if(await pasteContent(merged, p.fileRefs))setBracketPrompt(null);
           } catch {
             /* буфер или вставка в целевое приложение */
           }
@@ -684,8 +685,7 @@ function App() {
 
       const values = collectBracketValuesFromForm(form);
       const merged = applyBracketReplacements(prev.baseText, prev.labels, values);
-      setBracketPrompt(null);
-      void pasteContent(merged, prev.fileRefs);
+      void pasteContent(merged, prev.fileRefs).then(ok=>{if(ok)setBracketPrompt(null);});
     },
     [pasteContent, collectBracketValuesFromForm],
   );
@@ -755,10 +755,7 @@ function App() {
             setSelectedIndex(0);
             setHoverHighlightIndex(null);
             void reloadData({ resetGroupFilter: true });
-            queueMicrotask(() => {
-              searchRef.current?.focus();
-              searchRef.current?.select();
-            });
+            queueMicrotask(()=>{searchRef.current?.focus();searchRef.current?.select();});
           }
         })
         .then((fn) => {
@@ -1274,7 +1271,7 @@ function App() {
           role="presentation"
           data-tauri-drag-region="false"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setBracketPrompt(null);
+            if (e.target === e.currentTarget) {setBracketPrompt(null);}
           }}
         >
           <div
@@ -1297,12 +1294,13 @@ function App() {
                 const p = bracketPrompt;
                 if (!p) return;
                 const merged = applyBracketReplacements(p.baseText, p.labels, p.values);
-                setBracketPrompt(null);
-                void pasteContent(merged, p.fileRefs);
+                void pasteContent(merged, p.fileRefs).then(ok=>{if(ok)setBracketPrompt(null);});
               }}
               onKeyDown={handleBracketFormKeyDown}
             >
               <div className="palette__modal-fields">
+                {bracketPrompt.labels.length===0?<p>Вставить шаблон с вложениями?</p>:null}
+                {bracketPrompt.fileRefs.length>0?<p className="palette__modal-field-caption">Вложения: {bracketPrompt.fileRefs.map(ref=>ref.split(/[\\/]/).pop()).join(", ")}</p>:null}
                 {bracketPrompt.labels.map((label, i) => (
                   <input
                     key={label}
@@ -1326,7 +1324,7 @@ function App() {
                   />
                 ))}
               </div>
-              <p className="palette__modal-field-caption">Введите текст для поля</p>
+              {bracketPrompt.labels.length>0?<p className="palette__modal-field-caption">Введите текст для поля</p>:<button type="submit" autoFocus className="palette__attachment-confirm">Вставить</button>}
               <footer className="palette__hints palette__modal-hints">
                 <span>
                   отмена <kbd>Esc</kbd>

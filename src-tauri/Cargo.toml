@@ -1,6 +1,6 @@
 [package]
 name = "snipcast"
-version = "0.36.10"
+version = "0.36.11"
 description = "Snipcast — текстовые шаблоны из трея"
 authors = ["you"]
 edition = "2021"
@@ -8,6 +8,11 @@ edition = "2021"
 [lib]
 name = "snipcast_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# Only an isolated QA binary accepts marked SendInput events as physical typing.
+# Production builds do not compile this path.
+inline-qa = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -88,6 +93,9 @@ windows-sys = { version = "0.59", features = [
   "Win32_System_Memory",
   "Win32_System_Ole",
   "Win32_System_Threading",
+  "Win32_Security",
+  "Win32_UI_Input_Ime",
+  "Win32_UI_Accessibility",
   "Win32_Storage_FileSystem",
   "Win32_Graphics_Gdi",
   "Win32_Graphics_Dwm",
@@ -99,6 +107,7 @@ windows = { version = "0.61", features = [
   "Media_Ocr",
   "Storage_Streams",
   "Win32_System_Com",
+  "Win32_System_Ole",
   "Win32_UI_Accessibility",
 ] }
 

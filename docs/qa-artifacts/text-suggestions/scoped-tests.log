@@ -1,0 +1,64 @@
+
+> snipcast@0.36.11 test:changed
+> node scripts/test-changed.mjs --focus text-suggestions --files src-tauri/src/text_suggestions.rs src-tauri/src/suggestions_windows.rs src-tauri/src/paste_target.rs src-tauri/src/data.rs src-tauri/src/lib.rs src-tauri/Cargo.toml src-tauri/capabilities/default.json src/types.ts src/main.tsx src/App.tsx src/SettingsApp.tsx src/components/CaptureActionHotkeyField.tsx src/suggestions/TextSuggestions.tsx src/suggestions/SuggestionsSettings.tsx src/suggestions/suggestions.css tests/text_suggestions_ui.py tests/text_suggestions_native.py tests/settings_hotkeys_ui.py scripts/test-changed.mjs vite.config.ts README.md docs/qa-text-suggestions.md
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 7
+Проверка: Rust: text_suggestions::tests
+   Compiling snipcast v0.36.11 (C:\Users\designer\Desktop\Dev\Snipcast\src-tauri)
+    Finished `release` profile [optimized] target(s) in 27.87s
+     Running unittests src\lib.rs (.qa-work\text-suggestions\cargo-target\release\deps\snipcast_lib-90e0255f67271418.exe)
+
+running 5 tests
+test text_suggestions::tests::activation_and_boundaries ... ok
+test text_suggestions::tests::ranking_and_limit ... ok
+test text_suggestions::tests::trigger_word_and_backspace ... ok
+test text_suggestions::tests::variables_and_complexity ... ok
+test text_suggestions::tests::defaults_and_conflicts ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 34 filtered out; finished in 0.01s
+
+Проверка: Rust: suggestions_windows::tests
+    Finished `release` profile [optimized] target(s) in 1.05s
+     Running unittests src\lib.rs (.qa-work\text-suggestions\cargo-target\release\deps\snipcast_lib-90e0255f67271418.exe)
+
+running 3 tests
+test suggestions_windows::tests::insertion_is_tagged_and_bounded ... ok
+test suggestions_windows::tests::placement_respects_edges_and_negative_monitors ... ok
+test suggestions_windows::tests::released_modifier_does_not_keep_startup_alias_held ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 0.00s
+
+Проверка: Rust: paste_target::win::tests
+    Finished `release` profile [optimized] target(s) in 1.03s
+     Running unittests src\lib.rs (.qa-work\text-suggestions\cargo-target\release\deps\snipcast_lib-90e0255f67271418.exe)
+
+running 1 test
+test paste_target::win::tests::palette_paste_is_marked_as_own_input ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out; finished in 0.00s
+
+Проверка: Rust: data::tests
+    Finished `release` profile [optimized] target(s) in 1.13s
+     Running unittests src\lib.rs (.qa-work\text-suggestions\cargo-target\release\deps\snipcast_lib-90e0255f67271418.exe)
+
+running 1 test
+test data::tests::data_layer_survives_corruption ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out; finished in 0.03s
+
+Проверка: Rust: capture_hotkey_tests
+    Finished `release` profile [optimized] target(s) in 1.04s
+     Running unittests src\lib.rs (.qa-work\text-suggestions\cargo-target\release\deps\snipcast_lib-90e0255f67271418.exe)
+
+running 3 tests
+test capture_hotkey_tests::alt_does_not_allow_duplicate_actions ... ok
+test capture_hotkey_tests::defaults_and_control_remapping_are_valid ... ok
+test capture_hotkey_tests::tool_and_undo_conflicts_include_shift_and_alt ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 0.01s
+
+Проверка: Подсказки: настройки, плашка, форма и отмена
+PASS: dark: settings and popup passed; light: settings and popup passed; inline form: error/retry/cancel; attachment confirmation; ordinary palette unchanged
+Проверка: Настройки: регрессия горячих клавиш
+[{"theme": "dark", "width": 950, "labels": true, "icons": true, "clearAllFive": true, "resetDefaults": true, "preservesOtherSettings": true, "saveFailure": true, "recording": true, "noOverlap": true}, {"theme": "dark", "width": 720, "labels": true, "icons": true, "clearAllFive": true, "resetDefaults": true, "preservesOtherSettings": true, "saveFailure": true, "recording": true, "noOverlap": true}, {"theme": "light", "width": 950, "labels": true, "icons": true, "clearAllFive": true, "resetDefaults": true, "preservesOtherSettings": true, "saveFailure": true, "recording": true, "noOverlap": true}, {"theme": "light", "width": 720, "labels": true, "icons": true, "clearAllFive": true, "resetDefaults": true, "preservesOtherSettings": true, "saveFailure": true, "recording": true, "noOverlap": true}]

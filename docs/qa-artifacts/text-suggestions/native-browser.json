@@ -1,0 +1,17 @@
+[
+  {
+    "app": "Chrome #one",
+    "scenario": "real hook/UIA; replacement; no Enter/newline leakage",
+    "result": "passed"
+  },
+  {
+    "app": "Chrome #two",
+    "scenario": "real hook/UIA; replacement; no Enter/newline leakage",
+    "result": "passed"
+  },
+  {
+    "app": "Chrome #three",
+    "scenario": "real hook/UIA; replacement; no Enter/newline leakage",
+    "result": "passed"
+  }
+]

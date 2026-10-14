@@ -1,0 +1,13 @@
+{
+  "version": "0.36.11",
+  "sha256": "19BDBCBF8F8FE3A91ABB209CC1D2AFC2EC6D7A9A089F6A7963AC419912800D42",
+  "date": "2026-10-14T15:15:07.2114129Z",
+  "bytes": 18172928,
+  "features": "production; no inline-qa",
+  "tests": [
+    "7 core Rust tests",
+    "headless Chromium defaults and separator in dark/light",
+    "existing settings, quick palette and form regressions"
+  ],
+  "nativeInteractive": false
+}

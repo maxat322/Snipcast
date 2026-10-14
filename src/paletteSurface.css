@@ -1,0 +1,11 @@
+/* Shared clipping for the ordinary and quick palette. Native windows must
+   use the same radius; an opaque host is not clipped by CSS on its own. */
+:root { --snipcast-palette-radius: 12px; }
+html.palette-root, .palette-root body, .palette-root #root,
+html.suggestions-root, .suggestions-root body, .suggestions-root #root {
+  border-radius: var(--snipcast-palette-radius);
+  clip-path: inset(0 round var(--snipcast-palette-radius));
+}
+.palette, .text-suggestions {
+  border-radius: var(--snipcast-palette-radius);
+}

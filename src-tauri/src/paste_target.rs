@@ -265,9 +265,18 @@ mod win {
                     wScan: 0,
                     dwFlags: if key_up { KEYEVENTF_KEYUP } else { 0 },
                     time: 0,
-                    dwExtraInfo: 0,
+                    dwExtraInfo: crate::suggestions_windows::INJECT_TAG,
                 },
             },
+        }
+    }
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        #[test]
+        fn palette_paste_is_marked_as_own_input() {
+            let input=key_input(VK_CONTROL,false);
+            assert_eq!(unsafe {input.Anonymous.ki.dwExtraInfo},crate::suggestions_windows::INJECT_TAG);
         }
     }
 }

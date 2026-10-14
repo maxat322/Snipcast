@@ -1,0 +1,24 @@
+
+> snipcast@0.36.11 test:changed
+> node scripts/test-changed.mjs --focus text-suggestions --files src-tauri/src/suggestions_windows.rs tests/text_suggestions_ui.py
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 2
+Проверка: Rust: suggestions_windows::tests
+   Compiling snipcast v0.36.11 (C:\Users\designer\Desktop\Dev\Snipcast\src-tauri)
+    Finished `release` profile [optimized] target(s) in 17.30s
+     Running unittests src\lib.rs (.qa-work\quick-palette\cargo-target\release\deps\snipcast_lib-90e0255f67271418.exe)
+
+running 7 tests
+test suggestions_windows::tests::continuous_fallback_is_limited_to_max_text_targets ... ok
+test suggestions_windows::tests::native_offsets_distinguish_utf16_and_scintilla_bytes ... ok
+test suggestions_windows::tests::popup_origin_stays_fixed_until_hidden ... ok
+test suggestions_windows::tests::placement_respects_edges_and_negative_monitors ... ok
+test suggestions_windows::tests::insertion_is_tagged_and_bounded ... ok
+test suggestions_windows::tests::released_modifier_does_not_keep_startup_alias_held ... ok
+test suggestions_windows::tests::hidden_edit_and_native_rounding_need_no_foreground ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 37 filtered out; finished in 0.01s
+
+Проверка: Подсказки: настройки, плашка, форма и отмена
+PASS: dark: settings and popup passed; light: settings and popup passed; quick form: both themes; error/retry/cancel; attachment confirmation; ordinary palette unchanged

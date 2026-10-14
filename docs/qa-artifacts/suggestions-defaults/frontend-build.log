@@ -1,0 +1,13 @@
+
+> snipcast@0.36.11 build
+> tsc && vite build
+
+vite v7.3.2 building client environment for production...
+transforming...
+✓ 81 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.90 kB │ gzip:   0.45 kB
+dist/assets/index-DRfXqPpY.css   82.00 kB │ gzip:  14.22 kB
+dist/assets/index-2iPiSldW.js   440.68 kB │ gzip: 134.38 kB
+✓ built in 2.77s

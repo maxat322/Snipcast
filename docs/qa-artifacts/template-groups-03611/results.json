@@ -1,0 +1,26 @@
+[
+  {
+    "theme": "dark",
+    "moveBothWays": true,
+    "masterPreserved": true,
+    "selectionPreserved": true,
+    "cancelledDrags": true,
+    "reopen": true,
+    "delayedAutosave": true,
+    "errorAndRetry": true
+  },
+  {
+    "theme": "light",
+    "moveBothWays": true,
+    "masterPreserved": true,
+    "selectionPreserved": true,
+    "cancelledDrags": true,
+    "reopen": true,
+    "delayedAutosave": true,
+    "errorAndRetry": true
+  },
+  {
+    "autoScroll": true,
+    "groups": 18
+  }
+]

@@ -7,7 +7,9 @@ import { CaptureOverlay } from "./capture/CaptureOverlay";
 import { PinWindow } from "./capture/PinWindow";
 import { PinMenuWindow } from "./capture/PinMenuWindow";
 import {UpdateNotice} from "./UpdateNotice";
+import {TextSuggestions} from "./suggestions/TextSuggestions";
 import {RecordControl,VideoEditor} from "./video/VideoApp";
+import "./paletteSurface.css";
 
 /**
  * Не вызываем getCurrentWindow() на верхнем уровне: в Tauri 2 это лезет в
@@ -17,9 +19,10 @@ import {RecordControl,VideoEditor} from "./video/VideoApp";
  * Скриншот живёт в едином окне "capture-0" на виртуальном рабочем столе,
  * закреплённые кропы — в окнах "pin-N".
  */
-function resolveUiKind(): "settings" | "aiagent" | "palette" | "capture" | "pin" | "pinmenu" | "update-notice" | "video-control" | "video-editor" {
+function resolveUiKind(): "settings" | "aiagent" | "palette" | "capture" | "pin" | "pinmenu" | "update-notice" | "video-control" | "video-editor" | "text-suggestions" {
   const q = new URLSearchParams(window.location.search).get("snipcast");
   if (q === "settings") return "settings";
+  if(q==="text-suggestions")return q;
   if(q==="video-control"||q==="video-editor")return q;
   /* Демо-режим в обычном браузере: ?snipcast=capture / ?snipcast=pin */
   if (q === "capture") return "capture";
@@ -54,6 +57,7 @@ function mount() {
   if (!root) return;
 
   const kind = resolveUiKind();
+  if(kind==="text-suggestions") { document.documentElement.classList.add("suggestions-root");ReactDOM.createRoot(root).render(<TextSuggestions/>);return; }
   if(kind==="video-control"||kind==="video-editor"){
     document.documentElement.classList.add("video-root");
     ReactDOM.createRoot(root).render(kind==="video-control"?<RecordControl/>:<VideoEditor/>);return;
@@ -96,6 +100,7 @@ function mount() {
       </React.StrictMode>,
     );
   } else {
+    document.documentElement.classList.add("palette-root");
     ReactDOM.createRoot(root).render(
       <React.StrictMode>
         <App />

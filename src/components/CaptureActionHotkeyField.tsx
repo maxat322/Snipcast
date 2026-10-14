@@ -4,7 +4,7 @@ import {createHotkeyRecorder,tauriHotkeyToDisplay} from "../hotkeyFormat";
 import {ClearHotkeyButton} from "./ClearHotkeyButton";
 export function CaptureActionHotkeyField({label,value,onSave,disabled=false}:{label:string;value:string;onSave:(value:string)=>Promise<void>;disabled?:boolean}){
   const recorder=useMemo(createHotkeyRecorder,[]),[recording,setRecording]=useState(false),[focused,setFocused]=useState(false),[saving,setSaving]=useState(false);
-  useEffect(()=>{if(!focused)return;const kinds=["palette_hotkey","screenshot_hotkey","preset_hotkeys"];
+  useEffect(()=>{if(!focused)return;const kinds=["palette_hotkey","screenshot_hotkey","preset_hotkeys","suggestions_hotkeys"];
     const paused=Promise.all(kinds.map(kind=>invoke(`snipcast_${kind}_pause`).catch(()=>{})));
     return()=>{void paused.then(()=>Promise.all(kinds.map(kind=>invoke(`snipcast_${kind}_resume`).catch(()=>{}))));};
   },[focused]);

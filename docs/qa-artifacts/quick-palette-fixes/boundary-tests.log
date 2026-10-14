@@ -1,0 +1,13 @@
+running 10 tests
+test suggestions_windows::tests::continuous_fallback_is_limited_to_max_text_targets ... ok
+test suggestions_windows::tests::native_offsets_distinguish_utf16_and_scintilla_bytes ... ok
+test suggestions_windows::tests::insertion_is_tagged_and_bounded ... ok
+test suggestions_windows::tests::released_modifier_does_not_keep_startup_alias_held ... ok
+test suggestions_windows::tests::first_enter_is_accepted_while_visible_query_ack_is_pending ... ok
+test suggestions_windows::tests::placement_respects_edges_and_negative_monitors ... ok
+test suggestions_windows::tests::popup_origin_stays_fixed_until_hidden ... ok
+test suggestions_windows::tests::unknown_caret_centers_and_form_uses_the_whole_monitor ... ok
+test suggestions_windows::tests::unreadable_field_copy_must_be_fresh_and_exact ... ok
+test suggestions_windows::tests::hidden_edit_and_native_rounding_need_no_foreground ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out; finished in 0.02s

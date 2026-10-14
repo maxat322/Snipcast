@@ -13,6 +13,9 @@ mod updater;
 mod video;
 mod capture_history;
 mod capture_keyboard;
+mod text_suggestions;
+#[cfg(target_os = "windows")]
+mod suggestions_windows;
 
 #[cfg(target_os = "windows")]
 mod paddle;
@@ -115,6 +118,8 @@ fn build_tray_menu(app: &tauri::AppHandle) -> Result<Menu<tauri::Wry>, tauri::Er
     let settings = MenuItem::with_id(app, "settings", "Настройки", true, None::<&str>)?;
     let close_pins = MenuItem::with_id(app, "close_all_pins", "Закрыть все закрепы", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+    let suggestions_on = app.state::<Mutex<data::AppConfig>>().lock().map(|c|c.text_suggestions.enabled).unwrap_or(false);
+    let suggestions = MenuItem::with_id(app, "suggestions", if suggestions_on {"Подсказки при вводе: включены"} else {"Подсказки при вводе: выключены"}, cfg!(target_os="windows"), None::<&str>)?;
 
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![&show, &screenshot_item, &video_item];
     for item in &preset_items {
@@ -122,6 +127,7 @@ fn build_tray_menu(app: &tauri::AppHandle) -> Result<Menu<tauri::Wry>, tauri::Er
     }
     items.push(&close_pins);
     items.push(&settings);
+    items.push(&suggestions);
     items.push(&quit);
     Menu::with_items(app, &items)
 }
@@ -338,6 +344,10 @@ fn apply_screenshot_hotkey(app: &tauri::AppHandle, previous: Option<&str>, next:
 
 #[tauri::command]
 fn palette_hide(app: tauri::AppHandle) {
+    #[cfg(target_os="windows")]
+    if let Some(pending)=app.state::<text_suggestions::Runtime>().pending.lock().ok().and_then(|p|p.clone()) {
+        suggestions_windows::send(&app,suggestions_windows::Command::Action{session:pending.session,action:"cancel-pending".into(),index:None});
+    }
     hide_palette(&app);
 }
 
@@ -370,6 +380,7 @@ fn snipcast_save_config(
     skip_palette_hotkey_apply: Option<bool>,
 ) -> Result<(), String> {
     let skip_hotkey = skip_palette_hotkey_apply.unwrap_or(false);
+    text_suggestions::validate(&incoming)?;
     let mut cfg = state.lock().map_err(|e| e.to_string())?;
     let prev_hotkey = cfg.palette_hotkey.clone();
     let hotkey_changed = prev_hotkey.trim() != incoming.palette_hotkey.trim();
@@ -422,8 +433,17 @@ fn snipcast_save_config(
         }
     }
 
-    *cfg = incoming;
-    data::save_config(&cfg)?;
+    // Validate/register suggestions before persisting: a rejected OS shortcut must not become a saved setting.
+    let suggestions_changed = cfg.text_suggestions != incoming.text_suggestions;
+    let previous_cfg=cfg.clone();
+    drop(cfg);
+    if suggestions_changed { text_suggestions::prepare(&app, &incoming)?; }
+    if let Err(e)=data::save_config(&incoming) {
+        if suggestions_changed {let _=text_suggestions::prepare(&app,&previous_cfg);}
+        return Err(e);
+    }
+    let mut cfg=state.lock().map_err(|e|e.to_string())?;
+    *cfg=incoming;
     // Native callbacks can run inline on the UI thread. Rebuilding the tray
     // reads AppConfig again, so no config guard may survive into these calls.
     let saved_cfg = cfg.clone();
@@ -443,6 +463,8 @@ fn snipcast_save_config(
         refresh_tray_menu(&app);
     }
     api::apply_config(&app, &saved_cfg);
+    text_suggestions::configure(&app, &saved_cfg);
+    if suggestions_changed {refresh_tray_menu(&app);}
 
     Ok(())
 }
@@ -995,6 +1017,7 @@ pub fn run() {
         .manage(video::VideoState::default())
         .manage(ai::AiAgentState::default())
         .manage(updater::UpdateRuntime::default())
+        .manage(text_suggestions::Runtime::default())
         .manage(Mutex::new(PresetHotkeys::default()))
         .manage(Mutex::new(None::<TrayIcon>))
         .setup(move |app| {
@@ -1017,6 +1040,9 @@ pub fn run() {
             }
 
             api::apply_config(&app.handle(), &initial_cfg);
+            if let Err(e)=text_suggestions::apply(app.handle(),&initial_cfg) {
+                eprintln!("[snipcast] inline suggestions: {e}");
+            }
             updater::start_scheduler(app.handle().clone());
 
             // Прогрев скрытых окон оверлеев захвата: первый после запуска
@@ -1070,6 +1096,7 @@ pub fn run() {
                             refresh_paste_target(app);
                             let _ = snipcast_open_settings(app.clone());
                         }
+                        "suggestions" => text_suggestions::toggle(app),
                         "quit" => app.exit(0),
                         _ => {}
                     }
@@ -1097,6 +1124,13 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            text_suggestions::snipcast_suggestions_view,
+            text_suggestions::snipcast_suggestions_status,
+            text_suggestions::snipcast_suggestions_pending,
+            text_suggestions::snipcast_suggestions_action,
+            text_suggestions::snipcast_suggestions_complete,
+            text_suggestions::snipcast_suggestions_hotkeys_pause,
+            text_suggestions::snipcast_suggestions_hotkeys_resume,
             palette_hide,
             paste_insert::paste_template,
             paste_insert::paste_template_text_then_files,

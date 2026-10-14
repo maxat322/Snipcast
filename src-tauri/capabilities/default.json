@@ -4,6 +4,7 @@
   "description": "Snipcast windows",
   "windows": [
     "main",
+    "text-suggestions",
     "settings",
     "aiagent",
     "capture-*",

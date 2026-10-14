@@ -1,0 +1,22 @@
+[
+  {
+    "app": "Win32 EDIT",
+    "scenario": "complex form; confirmed replacement; cancellation",
+    "result": "passed"
+  },
+  {
+    "app": "Win32 EDIT",
+    "scenario": "focus; password; caret navigation; external injection invalidation",
+    "result": "passed"
+  },
+  {
+    "app": "Win32 EDIT",
+    "scenario": "case-insensitive exclusions; global toggle",
+    "result": "passed"
+  },
+  {
+    "app": "Chrome #one",
+    "scenario": "real hook/UIA; replacement; no Enter/newline leakage",
+    "result": "passed"
+  }
+]

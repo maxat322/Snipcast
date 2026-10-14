@@ -6,7 +6,7 @@ const git=(...args)=>{const result=spawnSync("git",args,{encoding:"utf8"});if(re
 const values=flag=>{const index=args.indexOf(flag);if(index<0)return [];return args.slice(index+1).filter((_,i,array)=>!array.slice(0,i+1).some(value=>value.startsWith("--")));};
 const explicit=values("--files");
 const focus=values("--focus")[0];
-if(focus&&!['capture-toolbar','capture-editor','settings-hotkeys'].includes(focus))throw new Error(`Unknown test focus: ${focus}`);
+if(focus&&!['capture-toolbar','capture-editor','settings-hotkeys','template-groups','text-suggestions'].includes(focus))throw new Error(`Unknown test focus: ${focus}`);
 const base=values("--base")[0]??git("tag","--sort=-version:refname").split(/\r?\n/)[0]??"HEAD";
 let files=explicit.length?explicit:[...git("diff","--name-only","--no-renames",base||"HEAD","--").split(/\r?\n/),...git("ls-files","--others","--exclude-standard").split(/\r?\n/)];
 files=[...new Set(files.filter(Boolean).map(file=>file.replaceAll("\\","/")))];
@@ -19,9 +19,28 @@ if(!explicit.length)files=files.filter(file=>/^(src\/|src-tauri\/(src\/|native\/
 });
 const selected=new Map();
 const add=(name,command,args)=>selected.set(name,{command,args});
-const browser=(name,file)=>add(name,"python",["-B","tests/run_browser.py",file]);
+const testPython=process.env.SNIPCAST_TEST_PYTHON??"python";
+const browser=(name,file)=>add(name,testPython,["-B","tests/run_browser.py",file]);
 const rust=(filter)=>add(`Rust: ${filter}`,"cargo",["test","--release","--lib","--features","tauri/custom-protocol","--manifest-path","src-tauri/Cargo.toml",filter]);
 for(const file of files){
+  if(focus==="text-suggestions"){
+    if(file==="tests/text_suggestions_native.py"&&native)add("Подсказки: нативный ввод, фокус и замена",testPython,["-B","tests/text_suggestions_native.py",...(process.env.SNIPCAST_INLINE_QA_QUICK==="1"?["--quick"]:[])]);
+    if(/^src\//.test(file)||file==="tests/text_suggestions_ui.py")browser("Подсказки: настройки, плашка, форма и отмена","tests/text_suggestions_ui.py");
+    if(file==="src-tauri/src/text_suggestions.rs")rust("text_suggestions::tests");
+    if(file==="src-tauri/src/suggestions_windows.rs"){rust("suggestions_windows::tests");if(native)add("Подсказки: нативный ввод, фокус и замена",testPython,["-B","tests/text_suggestions_native.py"]);}
+    if(file==="src-tauri/src/data.rs")rust("data::tests");
+    if(file==="src-tauri/src/paste_target.rs")rust("paste_target::win::tests");
+    if(file==="src-tauri/src/lib.rs")rust("capture_hotkey_tests");
+    if(file==="src/SettingsApp.tsx"||file==="src/components/CaptureActionHotkeyField.tsx")browser("Настройки: регрессия горячих клавиш","tests/settings_hotkeys_ui.py");
+    continue;
+  }
+  if(/^src\/suggestions\//.test(file)||file==="tests/text_suggestions_ui.py")browser("Подсказки: настройки, плашка, форма и отмена","tests/text_suggestions_ui.py");
+  if(file==="src-tauri/src/text_suggestions.rs")rust("text_suggestions::tests");
+  if(file==="src-tauri/src/suggestions_windows.rs"){rust("suggestions_windows::tests");if(native)add("Подсказки: нативный ввод, фокус и замена",testPython,["-B","tests/text_suggestions_native.py"]);}
+  if(focus==="template-groups"){
+    if(/^src\/Settings|^src\/components\/TemplateGroupTabs\.tsx$|^tests\/template_groups_ui\.py$/.test(file))browser("Шаблоны: перетаскивание групп и автосохранение","tests/template_groups_ui.py");
+    continue;
+  }
   if(focus==="settings-hotkeys"){
     if(/^src\/Settings|^src\/components\/(CaptureActionHotkeyField|ClearHotkeyButton)\.tsx$|^tests\/settings_hotkeys_ui\.py$/.test(file))browser("Настройки: подписи, очистка и возврат горячих клавиш","tests/settings_hotkeys_ui.py");
     continue;

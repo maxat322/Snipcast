@@ -1,0 +1,22 @@
+[
+  {
+    "app": "Win32 EDIT",
+    "scenario": "trigger /; title priority; preserve prefix; Enter suppression; focus",
+    "result": "passed"
+  },
+  {
+    "app": "Win32 EDIT",
+    "scenario": "arrows; Backspace; Esc preserves text",
+    "result": "passed"
+  },
+  {
+    "app": "Win32 EDIT",
+    "scenario": "multicharacter trigger; @; activation hotkey; content search",
+    "result": "passed"
+  },
+  {
+    "app": "Win32 EDIT",
+    "scenario": "automatic mode; RU; variables",
+    "result": "passed"
+  }
+]
