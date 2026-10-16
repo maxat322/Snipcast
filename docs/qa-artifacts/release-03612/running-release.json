@@ -1,0 +1,8 @@
+{
+  "pid": 26212,
+  "path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\snipcast.exe",
+  "version": "0.36.12",
+  "sha256": "7905742db774c7468f1f480e3b90715295bee8f08d6c88e79213ffd3d03212e1",
+  "tauri_windows": 4,
+  "tray_icons": 1
+}

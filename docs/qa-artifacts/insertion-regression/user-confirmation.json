@@ -1,0 +1,7 @@
+{
+  "observed_at": "2026-10-16",
+  "sha256": "1d9653d308b4a40eb7324fcc212caf737d4a705f3f7d451faffab0498b5c4bc4",
+  "user_result": "Шаблон вставился, команда удалена",
+  "coverage": "Same field as the two preceding manual attempts; application not specified",
+  "no_focus_stealing_automation": true
+}

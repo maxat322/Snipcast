@@ -1,0 +1,24 @@
+Проверка: Rust: suggestions_windows::tests
+   Compiling snipcast v0.36.12 (C:\Users\designer\Desktop\Dev\Snipcast\src-tauri)
+    Finished `release` profile [optimized] target(s) in 13.96s
+     Running unittests src\lib.rs (.qa-work\release-03612\cargo-target\release\deps\snipcast_lib-3fa2b57c7b25ef04.exe)
+
+running 16 tests
+test suggestions_windows::tests::continuous_fallback_is_limited_to_max_text_targets ... ok
+test suggestions_windows::tests::first_enter_is_accepted_while_visible_query_ack_is_pending ... ok
+test suggestions_windows::tests::cut_proof_checks_exact_length_position_and_surviving_context ... ok
+test suggestions_windows::tests::insertion_is_tagged_and_bounded ... ok
+test suggestions_windows::tests::native_offsets_distinguish_utf16_and_scintilla_bytes ... ok
+test suggestions_windows::tests::placement_respects_edges_and_negative_monitors ... ok
+test suggestions_windows::tests::popup_origin_stays_fixed_until_hidden ... ok
+test suggestions_windows::tests::released_modifier_does_not_keep_startup_alias_held ... ok
+test suggestions_windows::tests::tracked_suffix_is_reconciled_to_the_entire_actual_word ... ok
+test suggestions_windows::tests::unknown_caret_centers_and_form_uses_the_whole_monitor ... ok
+test suggestions_windows::tests::unreadable_field_copy_must_be_fresh_and_exact ... ok
+test suggestions_windows::tests::hidden_edit_and_native_rounding_need_no_foreground ... ok
+test suggestions_windows::tests::replacement_waits_for_deletion_and_checks_context_again_before_paste ... ok
+test suggestions_windows::tests::replacement_aborts_on_partial_selection_or_missing_deletion_without_pasting ... ok
+test suggestions_windows::tests::isolated_clipboard_uses_real_native_delete_and_paste ... ok
+test suggestions_windows::tests::hidden_edit_reproduces_old_residue_and_verifies_replacement_without_foreground ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out; finished in 0.32s

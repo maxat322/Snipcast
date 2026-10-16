@@ -1,0 +1,6 @@
+{
+  "files_checked": 102,
+  "changed": [
+    "src-tauri/src/suggestions_windows.rs"
+  ]
+}

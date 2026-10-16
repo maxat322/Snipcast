@@ -1,0 +1,16 @@
+{
+  "version": "0.36.12",
+  "sha256": "7905742db774c7468f1f480e3b90715295bee8f08d6c88e79213ffd3d03212e1",
+  "bytes": 18216960,
+  "frontend_asset": "index-2iPiSldW.js",
+  "versions": {
+    "package.json": "0.36.12",
+    "package-lock.json": "0.36.12",
+    "src-tauri/tauri.conf.json": "0.36.12",
+    "package-lock.json root": "0.36.12",
+    "Cargo.toml": "0.36.12",
+    "Cargo.lock": "0.36.12"
+  },
+  "suggestions_source_sha256": "32b4e96c44fbef9bab24030f1db0b13c9a1d4859f2ac9666ebc8aacb15814b86",
+  "source_matches_user_confirmed_build": true
+}

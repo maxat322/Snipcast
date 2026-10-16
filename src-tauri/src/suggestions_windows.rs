@@ -477,6 +477,7 @@ enum NativeKind {
 struct NativeText {
     kind: NativeKind,
     position: u32,
+    length: u32,
     prefix: String,
 }
 impl NativeText {
@@ -521,10 +522,11 @@ unsafe fn scalar_message(hwnd: usize, message: u32, wp: usize, lp: isize) -> Opt
 unsafe fn native_snapshot(hwnd: usize) -> Option<NativeText> {
     let class = class_name(hwnd);
     if class.eq_ignore_ascii_case("Edit") {
-        let (position, prefix) = edit_snapshot(hwnd)?;
+        let (position, prefix, length) = edit_snapshot(hwnd)?;
         return Some(NativeText {
             kind: NativeKind::Edit,
             position,
+            length,
             prefix,
         });
     }
@@ -560,6 +562,7 @@ unsafe fn native_snapshot(hwnd: usize) -> Option<NativeText> {
     Some(NativeText {
         kind: NativeKind::Scintilla,
         position,
+        length: scalar_message(hwnd, 2006, 0, 0)?.try_into().ok()?,
         prefix: String::from_utf8_lossy(&bytes).into_owned(),
     })
 }
@@ -712,7 +715,7 @@ unsafe fn class_name(hwnd: usize) -> String {
     let n = GetClassNameW(hwnd as HWND, name.as_mut_ptr(), 128);
     String::from_utf16_lossy(&name[..n.max(0) as usize])
 }
-unsafe fn edit_snapshot(hwnd: usize) -> Option<(u32, String)> {
+unsafe fn edit_snapshot(hwnd: usize) -> Option<(u32, String, u32)> {
     let mut start = 0u32;
     let mut end = 0u32;
     let mut result = 0usize;
@@ -757,7 +760,7 @@ unsafe fn edit_snapshot(hwnd: usize) -> Option<(u32, String)> {
         return None;
     }
     let before = &text[(start as usize).saturating_sub(256)..start as usize];
-    Some((start, String::from_utf16_lossy(before)))
+    Some((start, String::from_utf16_lossy(before), result as u32))
 }
 #[derive(Clone)]
 struct Target {
@@ -989,20 +992,51 @@ impl Target {
                     _ => false,
                 })
     }
-    unsafe fn suffix(&self, text: &str) -> bool {
+    unsafe fn prefix(&self) -> Option<(String, bool)> {
         if let Some(native) = &self.native {
-            return native.prefix.ends_with(text);
+            let units = match native.kind {
+                NativeKind::Edit => native.prefix.encode_utf16().count(),
+                NativeKind::Scintilla => native.prefix.len(),
+            };
+            return Some((native.prefix.clone(), units == native.position as usize));
         }
         if let Some(value) = &self.value {
-            return value.ends_with(text);
+            return Some((value.clone(), true));
         }
         if let Some(r) = &self.caret {
-            return before(r, text.chars().count())
-                .and_then(|r| r.GetText(256).ok())
-                .is_some_and(|t| t.to_string() == text);
+            let range = r.Clone().ok()?;
+            let moved = range
+                .MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, -129)
+                .ok()?;
+            return Some((range.GetText(1024).ok()?.to_string(), moved > -129));
         }
-        core::backspace_safe(text)
+        None
     }
+    unsafe fn fragment(&self, tracked: &str, trigger: &str) -> Option<String> {
+        if self.native.is_some() || self.caret.is_some() || self.value.is_some() {
+            let (prefix, start) = self.prefix()?;
+            return whole_fragment(&prefix, start, tracked, trigger);
+        }
+        core::backspace_safe(tracked).then(|| tracked.to_owned())
+    }
+    unsafe fn suffix(&self, text: &str, trigger: &str) -> bool {
+        self.fragment(text, trigger).as_deref() == Some(text)
+    }
+}
+fn whole_fragment(prefix: &str, at_start: bool, tracked: &str, trigger: &str) -> Option<String> {
+    if tracked.is_empty() || !prefix.ends_with(tracked) {
+        return None;
+    }
+    let start = prefix
+        .char_indices()
+        .rev()
+        .find(|(_, c)| !c.is_alphanumeric() && *c != '_' && !trigger.contains(*c))
+        .map(|(i, c)| i + c.len_utf8());
+    let text = &prefix[start.unwrap_or(0)..];
+    if (start.is_none() && !at_start) || text.chars().count() > 128 {
+        return None;
+    }
+    Some(text.to_owned())
 }
 fn place(
     anchor: Option<Rect>,
@@ -1241,7 +1275,7 @@ impl Controller {
     }
     unsafe fn publish(&mut self) {
         self.dirty = false;
-        let Some(query) = self
+        let Some(_) = self
             .word
             .query(&self.cfg.text_suggestions)
             .map(str::to_owned)
@@ -1266,7 +1300,8 @@ impl Controller {
             .target
             .as_ref()
             .is_some_and(|t| t.same_field(&new, &self.uia));
-        let suffix = new.suffix(&self.word.text);
+        let fragment = new.fragment(&self.word.text, &self.cfg.text_suggestions.trigger);
+        let suffix = fragment.is_some();
         // A UIA call may observe a newer key before that key reaches this worker.
         // Do not reset the word using a snapshot from a different input revision.
         if self.seq != INPUT_SEQ.load(SeqCst) {
@@ -1296,6 +1331,17 @@ impl Controller {
             return;
         }
         self.unconfirmed = None;
+        // Recover a missed prefix before searching, rather than expanding only
+        // the buffered suffix and leaving the beginning of the command behind.
+        self.word.text = fragment.unwrap();
+        let Some(query) = self
+            .word
+            .query(&self.cfg.text_suggestions)
+            .map(str::to_owned)
+        else {
+            self.hide();
+            return;
+        };
         let hits = core::search(&self.index, &query, self.cfg.text_suggestions.search_text);
         if hits.is_empty() {
             self.hide();
@@ -1550,10 +1596,9 @@ impl Controller {
             return;
         }
         let check = Target::inspect(&self.uia, &self.cfg).ok();
-        if !check
-            .as_ref()
-            .is_some_and(|t| saved.same_field(t, &self.uia) && t.suffix(&replace))
-        {
+        if !check.as_ref().is_some_and(|t| {
+            saved.same_field(t, &self.uia) && t.suffix(&replace, &self.cfg.text_suggestions.trigger)
+        }) {
             self.reset();
             self.status("Место ввода изменилось — подстановка отменена".into());
             return;
@@ -1650,7 +1695,9 @@ impl Controller {
                 return Err("Место ввода изменилось при возврате фокуса".into());
             }
             if let Ok(target) = &snapshot {
-                if saved.same_field(target, &self.uia) && target.suffix(replace) {
+                if saved.same_field(target, &self.uia)
+                    && target.suffix(replace, &self.cfg.text_suggestions.trigger)
+                {
                     break snapshot.unwrap();
                 }
             }
@@ -1660,7 +1707,7 @@ impl Controller {
             std::thread::sleep(Duration::from_millis(10));
         };
         if !saved.same_field(&fresh, &self.uia)
-            || !fresh.suffix(replace)
+            || !fresh.suffix(replace, &self.cfg.text_suggestions.trigger)
             || (from_form && saved.value.is_some() && saved.value != fresh.value)
         {
             return Err("Набранный фрагмент изменился — подстановка отменена".into());
@@ -1688,59 +1735,39 @@ impl Controller {
                 return Err("Отпустите клавиши-модификаторы перед вставкой".into());
             }
         }
-        if !text.trim().is_empty() {
-            crate::rich_clipboard::write_plain_text(text.trim())?;
-        } else {
-            crate::rich_clipboard::write_file_list(&paths)?;
-        }
-        let mut inputs = vec![];
-        if start_seq != INPUT_SEQ.load(SeqCst) {
-            return Err("Ввод изменился перед вставкой".into());
-        }
-        if let Some(native) = &fresh.native {
-            native.select(fresh.focus, replace)?;
-        } else if let Some(caret) = &fresh.caret {
-            let range =
-                before(caret, replace.chars().count()).ok_or("Не удалось выделить фрагмент")?;
-            if range
-                .GetText(256)
-                .map_err(|_| "Фрагмент недоступен")?
-                .to_string()
-                != replace
-            {
-                return Err("Фрагмент изменился".into());
-            }
-            range
-                .Select()
-                .map_err(|_| "Приложение не поддерживает выделение фрагмента")?;
-        } else {
-            select_verified_fallback(
-                &fresh,
-                replace,
-                &self.cfg.text_suggestions.trigger,
-                start_seq,
-            )?;
-            // Ctrl+C used for verification temporarily owns the clipboard.
-            if !text.trim().is_empty() {
-                crate::rich_clipboard::write_plain_text(text.trim())?;
-            } else {
-                crate::rich_clipboard::write_file_list(&paths)?;
-            }
-        }
-        if text.trim().is_empty() {
-            // File paste may attach a file without replacing selected text.
-            inputs.extend([key_input(VK_BACK, false), key_input(VK_BACK, true)]);
-        }
-        if focus().0 != saved.hwnd || start_seq != INPUT_SEQ.load(SeqCst) {
-            return Err("Ввод изменился перед вставкой".into());
-        }
-        append_paste(&mut inputs);
-        // A partially accepted native batch must never be retried from this
-        // pending form, especially for a field without a readable range.
-        if from_form {
+        let mut replacement = NativeReplacement {
+            target: &fresh,
+            cfg: &self.cfg,
+            seq: start_seq,
+            word: replace,
+            text: text.trim(),
+            paths: &paths,
+            mutation_started: false,
+        };
+        let result = replace_verified(&mut replacement, replace);
+        // Once deletion/paste was sent, retrying the form could delete a second word.
+        if from_form && replacement.mutation_started {
             self.pending_invalid = true;
         }
-        inject(&inputs)?;
+        if result.is_err()
+            && !replacement.mutation_started
+            && insertion_target_unchanged(&fresh, start_seq)
+        {
+            if let Some(native) = &fresh.native {
+                let _ = scalar_message(
+                    fresh.focus,
+                    match native.kind {
+                        NativeKind::Edit => 0xb1,
+                        NativeKind::Scintilla => 2160,
+                    },
+                    native.position as usize,
+                    native.position as isize,
+                );
+            } else if let Some(caret) = &fresh.caret {
+                let _ = caret.Select();
+            }
+        }
+        result?;
         // Do not retry another strategy after partial insertion.
         if !text.trim().is_empty() && !paths.is_empty() {
             std::thread::sleep(Duration::from_millis(120));
@@ -1881,6 +1908,197 @@ impl Controller {
         }
     }
 }
+trait ReplacementIo {
+    fn select_and_verify(&mut self) -> Result<String, String>;
+    fn remove_selected(&mut self) -> Result<String, String>;
+    fn confirm_removed(&mut self) -> Result<(), String>;
+    fn paste(&mut self) -> Result<(), String>;
+}
+fn replace_verified(io: &mut impl ReplacementIo, word: &str) -> Result<(), String> {
+    if io.select_and_verify()? != word {
+        return Err("Выделен не весь набранный фрагмент — вставка отменена".into());
+    }
+    if io.remove_selected()? != word {
+        return Err("Не подтверждено удаление команды — вставка отменена".into());
+    }
+    io.confirm_removed()?;
+    io.paste()
+}
+struct NativeReplacement<'a> {
+    target: &'a Target,
+    cfg: &'a AppConfig,
+    seq: u64,
+    word: &'a str,
+    text: &'a str,
+    paths: &'a [std::path::PathBuf],
+    mutation_started: bool,
+}
+fn native_after_cut(before: &NativeText, after: &NativeText, word: &str) -> bool {
+    let length = match before.kind {
+        NativeKind::Edit => word.encode_utf16().count(),
+        NativeKind::Scintilla => word.len(),
+    } as u32;
+    before.kind == after.kind
+        && before.position.checked_sub(length) == Some(after.position)
+        && before.length.checked_sub(length) == Some(after.length)
+        && before
+            .prefix
+            .strip_suffix(word)
+            .is_some_and(|left| after.prefix.ends_with(left.trim_start_matches('\u{fffd}')))
+}
+unsafe fn native_selection_matches(native: &NativeText, hwnd: usize, word: &str) -> bool {
+    let Some(start) = native.replacement_start(word) else {
+        return false;
+    };
+    let pair = match native.kind {
+        NativeKind::Edit => {
+            let (mut a, mut b) = (0u32, 0u32);
+            scalar_message(
+                hwnd,
+                0xb0,
+                &mut a as *mut _ as usize,
+                &mut b as *mut _ as isize,
+            )
+            .map(|_| (a, b))
+        }
+        NativeKind::Scintilla => scalar_message(hwnd, 2009, 0, 0)
+            .zip(scalar_message(hwnd, 2008, 0, 0))
+            .map(|(a, b)| (a.min(b) as u32, a.max(b) as u32)),
+    };
+    pair == Some((start, native.position))
+}
+impl NativeReplacement<'_> {
+    unsafe fn check(&self) -> Result<(), String> {
+        if insertion_target_unchanged(self.target, self.seq) {
+            Ok(())
+        } else {
+            Err("Место ввода изменилось — вставка отменена".into())
+        }
+    }
+}
+impl ReplacementIo for NativeReplacement<'_> {
+    fn select_and_verify(&mut self) -> Result<String, String> {
+        unsafe {
+            self.check()?;
+            if let Some(native) = &self.target.native {
+                native.select(self.target.focus, self.word)?;
+                if !native_selection_matches(native, self.target.focus, self.word) {
+                    return Err("Выделение команды не подтверждено — вставка отменена".into());
+                }
+            } else {
+                // UIA Select/GetSelection is not authoritative in Chromium/Qt:
+                // it may describe an accessibility range without selecting the
+                // actual editor text. Verify keyboard selection through Copy.
+                select_verified_fallback(
+                    self.target,
+                    self.word,
+                    &self.cfg.text_suggestions.trigger,
+                    self.seq,
+                )?;
+            }
+            Ok(self.word.to_owned())
+        }
+    }
+    fn remove_selected(&mut self) -> Result<String, String> {
+        unsafe {
+            self.check()?;
+            if let Some(native) = &self.target.native {
+                if !native_selection_matches(native, self.target.focus, self.word) {
+                    return Err("Выделение снято приложением — вставка отменена".into());
+                }
+                self.mutation_started = true;
+                clear_native_selection(native, self.target.focus, self.word)?;
+                Ok(self.word.to_owned())
+            } else {
+                // Recheck the actual editor selection immediately before Cut.
+                copy_selection(self.target, self.seq, |before, after, text| {
+                    fresh_copy_matches(before, after, text, self.word)
+                })?;
+                self.check()?;
+                self.mutation_started = true;
+                clipboard_shortcut(self.target, self.seq, 0x58, |before, after, text| {
+                    fresh_copy_matches(before, after, text, self.word)
+                })
+            }
+        }
+    }
+    fn confirm_removed(&mut self) -> Result<(), String> {
+        unsafe {
+            self.check()?;
+            let Some(original) = &self.target.native else {
+                // For editors without a Win32 text adapter, remove_selected
+                // already required a fresh exact Cut result. Do not reject a
+                // completed Cut because a UIA caret/selection is stale or absent.
+                return Ok(());
+            };
+            let deadline = Instant::now() + Duration::from_millis(700);
+            loop {
+                self.check()?;
+                if native_snapshot(self.target.focus)
+                    .is_some_and(|now| native_after_cut(original, &now, self.word))
+                {
+                    return Ok(());
+                }
+                if Instant::now() >= deadline {
+                    return Err(
+                        "Удаление команды не подтверждено (Win32) — шаблон не вставлен".into(),
+                    );
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
+    fn paste(&mut self) -> Result<(), String> {
+        unsafe {
+            self.check()?;
+            if self.text.is_empty() {
+                crate::rich_clipboard::write_file_list(self.paths)?;
+            } else {
+                crate::rich_clipboard::write_plain_text(self.text)?;
+            }
+            self.check()?;
+            if let Some(native) = &self.target.native {
+                return paste_native(native, self.target.focus);
+            }
+            let mut inputs = vec![];
+            append_paste(&mut inputs);
+            inject(&inputs)
+        }
+    }
+}
+unsafe fn clear_native_selection(
+    native: &NativeText,
+    hwnd: usize,
+    word: &str,
+) -> Result<(), String> {
+    if !native_selection_matches(native, hwnd, word) {
+        return Err("Выделение снято приложением — вставка отменена".into());
+    }
+    scalar_message(
+        hwnd,
+        match native.kind {
+            NativeKind::Edit => WM_CLEAR,
+            NativeKind::Scintilla => 2180, // SCI_CLEAR
+        },
+        0,
+        0,
+    )
+    .map(|_| ())
+    .ok_or("Приложение не подтвердило удаление команды".into())
+}
+unsafe fn paste_native(native: &NativeText, hwnd: usize) -> Result<(), String> {
+    scalar_message(
+        hwnd,
+        match native.kind {
+            NativeKind::Edit => WM_PASTE,
+            NativeKind::Scintilla => 2179, // SCI_PASTE
+        },
+        0,
+        0,
+    )
+    .map(|_| ())
+    .ok_or("Приложение не подтвердило вставку шаблона".into())
+}
 fn key_input(vk: u16, up: bool) -> INPUT {
     INPUT {
         r#type: INPUT_KEYBOARD,
@@ -1946,7 +2164,7 @@ fn extended_key(vk: u16, up: bool) -> INPUT {
     input
 }
 fn fresh_copy_matches(before: u32, after: u32, copied: &str, expected: &str) -> bool {
-    before != 0 && after != before && copied == expected
+    after != 0 && after != before && copied == expected
 }
 unsafe fn insertion_target_unchanged(target: &Target, seq: u64) -> bool {
     let (hwnd, field, _) = focus();
@@ -1973,33 +2191,70 @@ unsafe fn copy_selection(
     seq: u64,
     accept: impl Fn(u32, u32, &str) -> bool,
 ) -> Result<String, String> {
+    clipboard_shortcut(target, seq, 0x43, accept)
+}
+unsafe fn clipboard_shortcut(
+    target: &Target,
+    seq: u64,
+    key: u16,
+    accept: impl Fn(u32, u32, &str) -> bool,
+) -> Result<String, String> {
     use windows_sys::Win32::System::DataExchange::GetClipboardSequenceNumber;
     if !insertion_target_unchanged(target, seq) {
         return Err("Место ввода изменилось при проверке выделения".into());
     }
     let before = GetClipboardSequenceNumber();
-    inject(&[
-        key_input(VK_CONTROL, false),
-        key_input(0x43, false),
-        key_input(0x43, true),
-        key_input(VK_CONTROL, true),
-    ])?;
+    let sent = if let Some(native) = &target.native {
+        // Pointer-free control commands bypass application hotkey remapping and
+        // acknowledge processing, rather than only queuing a keyboard event.
+        let message = match (native.kind, key) {
+            (NativeKind::Edit, 0x43) => WM_COPY,
+            (NativeKind::Edit, 0x58) => WM_CUT,
+            (NativeKind::Scintilla, 0x43) => 2178, // SCI_COPY
+            (NativeKind::Scintilla, 0x58) => 2177, // SCI_CUT
+            _ => return Err("Неизвестная операция с выделением".into()),
+        };
+        scalar_message(target.focus, message, 0, 0)
+            .map(|_| ())
+            .ok_or("Приложение не подтвердило операцию с командой".into())
+    } else {
+        inject(&[
+            key_input(VK_CONTROL, false),
+            key_input(key, false),
+            key_input(key, true),
+            key_input(VK_CONTROL, true),
+        ])
+    };
+    if let Err(error) = sent {
+        if target.native.is_none() {
+            let _ = inject(&[key_input(key, true), key_input(VK_CONTROL, true)]);
+        }
+        return Err(error);
+    }
     let deadline = Instant::now() + Duration::from_millis(700);
     while Instant::now() < deadline {
         if !insertion_target_unchanged(target, seq) {
             return Err("Место ввода изменилось при проверке выделения".into());
         }
-        if let Ok(copied) = crate::snipcast_clipboard_read_text() {
-            // Reading can cause delayed clipboard rendering; inspect the
-            // sequence afterwards, rather than waiting before requesting data.
-            let after = GetClipboardSequenceNumber();
-            if accept(before, after, &copied) {
-                return Ok(copied);
+        // Do not open the clipboard until the target has published its copy.
+        // Polling GetText immediately after SendInput can lock the clipboard
+        // while the application's copy/cut handler tries to acquire it.
+        if GetClipboardSequenceNumber() != before {
+            if let Ok(copied) = crate::snipcast_clipboard_read_text() {
+                let after = GetClipboardSequenceNumber();
+                if accept(before, after, &copied) {
+                    return Ok(copied);
+                }
             }
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    Err("Не удалось подтвердить выделение команды; исходный текст не удалён".into())
+    Err(if key == 0x58 {
+        "Результат вырезания не подтверждён — вставка и повтор отменены"
+    } else {
+        "Не удалось подтвердить выделение команды; исходный текст не удалён"
+    }
+    .into())
 }
 unsafe fn select_verified_fallback(
     target: &Target,
@@ -2245,7 +2500,7 @@ fn worker(app: tauri::AppHandle, cfg: AppConfig, rx: mpsc::Receiver<Command>) {
                         let valid = fresh.as_ref().is_some_and(|f| {
                             c.target.as_ref().is_some_and(|t| {
                                 t.same_field(f, &c.uia)
-                                    && f.suffix(&c.word.text)
+                                    && f.suffix(&c.word.text, &c.cfg.text_suggestions.trigger)
                                     && match (&t.native, &f.native) {
                                         (Some(a), Some(b)) => {
                                             a.position == b.position && a.prefix == b.prefix
@@ -2288,6 +2543,411 @@ fn worker(app: tauri::AppHandle, cfg: AppConfig, rx: mpsc::Receiver<Command>) {
 mod tests {
     use super::*;
     #[test]
+    fn isolated_clipboard_uses_real_native_delete_and_paste() {
+        const CHILD: &str = "SNIPCAST_CLIPBOARD_REGRESSION_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "suggestions_windows::tests::isolated_clipboard_uses_real_native_delete_and_paste", "--nocapture"])
+                .env(CHILD, "1").output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+        // A child process owns an unnamed window station and desktop, including
+        // its clipboard. No SwitchDesktop, input injection or user focus access.
+        #[link(name = "user32")]
+        extern "system" {
+            fn CreateWindowStationW(
+                name: *const u16,
+                flags: u32,
+                access: u32,
+                sa: *const std::ffi::c_void,
+            ) -> HANDLE;
+            fn GetProcessWindowStation() -> HANDLE;
+            fn SetProcessWindowStation(station: HANDLE) -> i32;
+            fn CreateDesktopW(
+                name: *const u16,
+                device: *const u16,
+                mode: *const std::ffi::c_void,
+                flags: u32,
+                access: u32,
+                sa: *const std::ffi::c_void,
+            ) -> HANDLE;
+            fn GetThreadDesktop(tid: u32) -> HANDLE;
+            fn SetThreadDesktop(desktop: HANDLE) -> i32;
+            fn CloseDesktop(desktop: HANDLE) -> i32;
+            fn CloseWindowStation(station: HANDLE) -> i32;
+        }
+        unsafe {
+            let original_station = GetProcessWindowStation();
+            let original_desktop = GetThreadDesktop(GetCurrentThreadId());
+            let station = CreateWindowStationW(std::ptr::null(), 0, 0xf037f, std::ptr::null());
+            assert!(!station.is_null());
+            assert_ne!(SetProcessWindowStation(station), 0);
+            let name: Vec<_> = "SnipcastClipboardQA\0".encode_utf16().collect();
+            let desktop = CreateDesktopW(
+                name.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                0xf01ff,
+                std::ptr::null(),
+            );
+            assert!(!desktop.is_null());
+            assert_ne!(SetThreadDesktop(desktop), 0);
+            assert!(GetForegroundWindow().is_null());
+            for _ in 0..20 {
+                for (word, body) in [
+                    ("=почта", "Ответ"),
+                    ("/+/почта", "Анна\r\nМосква"),
+                    ("𐐀тест", "🙂 готово"),
+                ] {
+                    let edit = HiddenReplacement::new("До ", word, " после", body);
+                    edit.original.select(edit.hwnd as usize, word).unwrap();
+                    clear_native_selection(&edit.original, edit.hwnd as usize, word).unwrap();
+                    assert!(native_after_cut(
+                        &edit.original,
+                        &native_snapshot(edit.hwnd as usize).unwrap(),
+                        word
+                    ));
+                    crate::rich_clipboard::write_plain_text(body).unwrap();
+                    paste_native(&edit.original, edit.hwnd as usize).unwrap();
+                    assert_eq!(edit.text(), format!("До {body} после"));
+                }
+            }
+            let lost = HiddenReplacement::new("До ", "=почта", " после", "Ответ");
+            assert!(clear_native_selection(&lost.original, lost.hwnd as usize, "=почта").is_err());
+            assert_eq!(lost.text(), "До =почта после");
+            drop(lost);
+            assert_ne!(SetThreadDesktop(original_desktop), 0);
+            assert_ne!(SetProcessWindowStation(original_station), 0);
+            assert_ne!(CloseDesktop(desktop), 0);
+            assert_ne!(CloseWindowStation(station), 0);
+        }
+    }
+    #[test]
+    fn tracked_suffix_is_reconciled_to_the_entire_actual_word() {
+        assert_eq!(
+            whole_fragment("Привет =вписка", true, "писка", "="),
+            Some("=вписка".into())
+        );
+        assert_eq!(
+            whole_fragment("=вписка", true, "вписка", "="),
+            Some("=вписка".into())
+        );
+        assert_eq!(
+            whole_fragment("Слово вписка", false, "писка", "="),
+            Some("вписка".into())
+        );
+        assert_eq!(whole_fragment("писка", false, "писка", "="), None);
+        assert_eq!(whole_fragment("вписка", true, "другое", "="), None);
+        assert_eq!(whole_fragment(&"а".repeat(129), true, "ааа", "="), None);
+        assert_eq!(
+            whole_fragment("Текст /+/почта", true, "почта", "/+/"),
+            Some("/+/почта".into())
+        );
+    }
+    #[test]
+    fn cut_proof_checks_exact_length_position_and_surviving_context() {
+        let old = NativeText {
+            kind: NativeKind::Edit,
+            position: 10,
+            length: 16,
+            prefix: "До =вписка".into(),
+        };
+        let new = NativeText {
+            kind: NativeKind::Edit,
+            position: 3,
+            length: 9,
+            prefix: "До ".into(),
+        };
+        assert!(native_after_cut(&old, &new, "=вписка"));
+        assert!(!native_after_cut(
+            &old,
+            &NativeText {
+                length: old.length,
+                ..new.clone()
+            },
+            "=вписка"
+        ));
+        assert!(!native_after_cut(
+            &old,
+            &NativeText {
+                position: 4,
+                ..new.clone()
+            },
+            "=вписка"
+        ));
+        assert!(!native_after_cut(
+            &old,
+            &NativeText {
+                prefix: "Да ".into(),
+                ..new.clone()
+            },
+            "=вписка"
+        ));
+        let bytes = NativeText {
+            kind: NativeKind::Scintilla,
+            position: 18,
+            length: 24,
+            prefix: "До =вписка".into(),
+        };
+        let after = NativeText {
+            kind: NativeKind::Scintilla,
+            position: 5,
+            length: 11,
+            prefix: "До ".into(),
+        };
+        assert!(native_after_cut(&bytes, &after, "=вписка"));
+    }
+    // Uses a real, hidden EDIT control and the production transaction/proofs.
+    // Clipboard transport is local to the fixture: no host clipboard, hooks,
+    // SendInput or focus changes. Faults reproduce clipboard-induced selection
+    // loss and delayed/ignored/partial deletion before a paste.
+    struct HiddenReplacement {
+        hwnd: HWND,
+        original: NativeText,
+        word: String,
+        body: String,
+        wrong_selection: bool,
+        copy_loses_selection: bool,
+        cut_mode: u8,
+        paste_calls: usize,
+        cut_calls: usize,
+        polls: usize,
+        target_changed: bool,
+    }
+    impl HiddenReplacement {
+        unsafe fn new(prefix: &str, word: &str, suffix: &str, body: &str) -> Self {
+            let text: Vec<u16> = format!("{prefix}{word}{suffix}\0").encode_utf16().collect();
+            let class: Vec<u16> = "EDIT\0".encode_utf16().collect();
+            let hwnd = CreateWindowExW(
+                0,
+                class.as_ptr(),
+                text.as_ptr(),
+                WS_POPUP | 0x4,
+                0,
+                0,
+                400,
+                200,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            );
+            assert!(!hwnd.is_null());
+            let end = (prefix.encode_utf16().count() + word.encode_utf16().count()) as usize;
+            scalar_message(hwnd as usize, 0xb1, end, end as isize).unwrap();
+            let original = native_snapshot(hwnd as usize).unwrap();
+            Self {
+                hwnd,
+                original,
+                word: word.into(),
+                body: body.into(),
+                wrong_selection: false,
+                copy_loses_selection: false,
+                cut_mode: 0,
+                paste_calls: 0,
+                cut_calls: 0,
+                polls: 0,
+                target_changed: false,
+            }
+        }
+        unsafe fn text(&self) -> String {
+            let len = scalar_message(self.hwnd as usize, WM_GETTEXTLENGTH, 0, 0).unwrap();
+            let mut buf = vec![0u16; len + 1];
+            scalar_message(
+                self.hwnd as usize,
+                WM_GETTEXT,
+                buf.len(),
+                buf.as_mut_ptr() as isize,
+            )
+            .unwrap();
+            String::from_utf16_lossy(&buf[..len])
+        }
+        unsafe fn selected(&self) -> String {
+            let (mut a, mut b) = (0u32, 0u32);
+            scalar_message(
+                self.hwnd as usize,
+                0xb0,
+                &mut a as *mut _ as usize,
+                &mut b as *mut _ as isize,
+            )
+            .unwrap();
+            let text: Vec<u16> = self.text().encode_utf16().collect();
+            String::from_utf16_lossy(&text[a as usize..b as usize])
+        }
+        unsafe fn replace(&self, text: &str) {
+            let text: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
+            scalar_message(self.hwnd as usize, 0xc2, 1, text.as_ptr() as isize).unwrap();
+        }
+    }
+    impl Drop for HiddenReplacement {
+        fn drop(&mut self) {
+            unsafe {
+                assert_eq!(IsWindowVisible(self.hwnd), 0);
+                DestroyWindow(self.hwnd);
+            }
+        }
+    }
+    impl ReplacementIo for HiddenReplacement {
+        fn select_and_verify(&mut self) -> Result<String, String> {
+            unsafe {
+                self.original.select(self.hwnd as usize, &self.word)?;
+                if self.wrong_selection {
+                    let start = self.original.replacement_start(&self.word).unwrap() + 1;
+                    scalar_message(
+                        self.hwnd as usize,
+                        0xb1,
+                        start as usize,
+                        self.original.position as isize,
+                    )
+                    .unwrap();
+                }
+                let text = self.selected();
+                if self.copy_loses_selection {
+                    scalar_message(
+                        self.hwnd as usize,
+                        0xb1,
+                        self.original.position as usize,
+                        self.original.position as isize,
+                    )
+                    .unwrap();
+                }
+                Ok(text)
+            }
+        }
+        fn remove_selected(&mut self) -> Result<String, String> {
+            unsafe {
+                if !native_selection_matches(&self.original, self.hwnd as usize, &self.word) {
+                    return Err("Selection lost".into());
+                }
+                self.cut_calls += 1;
+                let selected = self.selected();
+                match self.cut_mode {
+                    0 => self.replace(""),
+                    3 => {
+                        let start = self.original.replacement_start(&self.word).unwrap();
+                        scalar_message(
+                            self.hwnd as usize,
+                            0xb1,
+                            start as usize,
+                            (start + 1) as isize,
+                        )
+                        .unwrap();
+                        self.replace("");
+                    }
+                    _ => {}
+                }
+                Ok(selected)
+            }
+        }
+        fn confirm_removed(&mut self) -> Result<(), String> {
+            unsafe {
+                for _ in 0..4 {
+                    self.polls += 1;
+                    if self.cut_mode == 2 && self.polls == 3 {
+                        self.replace("");
+                    }
+                    if native_snapshot(self.hwnd as usize)
+                        .is_some_and(|now| native_after_cut(&self.original, &now, &self.word))
+                    {
+                        return Ok(());
+                    }
+                }
+                Err("Deletion not confirmed".into())
+            }
+        }
+        fn paste(&mut self) -> Result<(), String> {
+            unsafe {
+                if self.target_changed {
+                    return Err("Target changed".into());
+                }
+                self.paste_calls += 1;
+                // An app reacting to the clipboard write can collapse selection.
+                // Cutting first makes this harmless instead of leaving the command.
+                let position = native_snapshot(self.hwnd as usize).unwrap().position;
+                scalar_message(
+                    self.hwnd as usize,
+                    0xb1,
+                    position as usize,
+                    position as isize,
+                )
+                .unwrap();
+                self.replace(&self.body);
+                Ok(())
+            }
+        }
+    }
+    #[test]
+    fn hidden_edit_reproduces_old_residue_and_verifies_replacement_without_foreground() {
+        unsafe {
+            let mut old = HiddenReplacement::new("До ", "=почта", " после", "Готовый ответ");
+            old.select_and_verify().unwrap();
+            // Simulate a clipboard listener/provider clearing selection before Ctrl+V.
+            scalar_message(
+                old.hwnd as usize,
+                0xb1,
+                old.original.position as usize,
+                old.original.position as isize,
+            )
+            .unwrap();
+            old.replace("Готовый ответ");
+            assert_eq!(old.text(), "До =почтаГотовый ответ после");
+            for _ in 0..20 {
+                for (word, body) in [
+                    ("=почта", "Готовый ответ"),
+                    ("/+/почта", "Анна\r\nМосква"),
+                    ("hello", ""),
+                    ("𐐀тест", "Ответ 🙂"),
+                ] {
+                    let mut new = HiddenReplacement::new("До ", word, " после", body);
+                    replace_verified(&mut new, word).unwrap();
+                    assert_eq!(new.text(), format!("До {body} после"));
+                    assert_eq!((new.cut_calls, new.paste_calls), (1, 1));
+                }
+            }
+        }
+    }
+    #[test]
+    fn replacement_aborts_on_partial_selection_or_missing_deletion_without_pasting() {
+        unsafe {
+            let mut wrong = HiddenReplacement::new("До ", "=почта", " после", "Ответ");
+            wrong.wrong_selection = true;
+            assert!(replace_verified(&mut wrong, "=почта").is_err());
+            assert_eq!((wrong.cut_calls, wrong.paste_calls), (0, 0));
+            assert_eq!(wrong.text(), "До =почта после");
+            let mut lost = HiddenReplacement::new("До ", "=почта", " после", "Ответ");
+            lost.copy_loses_selection = true;
+            assert!(replace_verified(&mut lost, "=почта").is_err());
+            assert_eq!((lost.cut_calls, lost.paste_calls), (0, 0));
+            for cut_mode in [1, 3] {
+                let mut ignored = HiddenReplacement::new("До ", "=почта", " после", "Ответ");
+                ignored.cut_mode = cut_mode;
+                assert!(replace_verified(&mut ignored, "=почта").is_err());
+                assert_eq!(ignored.paste_calls, 0);
+            }
+        }
+    }
+    #[test]
+    fn replacement_waits_for_deletion_and_checks_context_again_before_paste() {
+        unsafe {
+            let mut slow = HiddenReplacement::new("До ", "=почта", " после", "Ответ");
+            slow.cut_mode = 2;
+            replace_verified(&mut slow, "=почта").unwrap();
+            assert_eq!(slow.polls, 3);
+            assert_eq!(slow.text(), "До Ответ после");
+            let mut changed = HiddenReplacement::new("До ", "=почта", " после", "Ответ");
+            changed.target_changed = true;
+            assert!(replace_verified(&mut changed, "=почта").is_err());
+            assert_eq!(changed.paste_calls, 0);
+        }
+    }
+    #[test]
     fn first_enter_is_accepted_while_visible_query_ack_is_pending() {
         assert!(consume_visible_key(13, false, false, 0, false, true));
         assert!(!consume_visible_key(13, false, false, 0, false, false));
@@ -2298,6 +2958,7 @@ mod tests {
     #[test]
     fn unreadable_field_copy_must_be_fresh_and_exact() {
         assert!(fresh_copy_matches(20, 21, "/вписка", "/вписка"));
+        assert!(fresh_copy_matches(0, 1, "/вписка", "/вписка"));
         assert!(!fresh_copy_matches(20, 20, "/вписка", "/вписка"));
         assert!(!fresh_copy_matches(20, 21, "писка", "/вписка"));
         assert!(!fresh_copy_matches(0, 0, "/вписка", "/вписка"));
@@ -2406,11 +3067,13 @@ mod tests {
         let edit = NativeText {
             kind: NativeKind::Edit,
             position: prefix.encode_utf16().count() as u32,
+            length: prefix.encode_utf16().count() as u32,
             prefix: prefix.clone(),
         };
         let scintilla = NativeText {
             kind: NativeKind::Scintilla,
             position: prefix.len() as u32,
+            length: prefix.len() as u32,
             prefix,
         };
         assert_eq!(edit.replacement_start("/прив"), Some(7));
