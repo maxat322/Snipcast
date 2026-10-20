@@ -1,0 +1,15 @@
+{
+  "versions": {
+    "package": "0.36.13",
+    "lock": "0.36.13",
+    "lockRoot": "0.36.13",
+    "cargo": "0.36.13",
+    "cargoLock": "0.36.13",
+    "tauri": "0.36.13"
+  },
+  "bytes": 18160128,
+  "sha256": "cc2fbd8912a97e1e952c8ffd4b07affc11fdeb082e6a753874e2f95475a1bbfc",
+  "frontend": "index-BAH_c6y-.js",
+  "productionIdentifier": true,
+  "inlineQa": false
+}

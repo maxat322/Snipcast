@@ -10,7 +10,7 @@ if(focus&&!['capture-toolbar','capture-editor','settings-hotkeys','template-grou
 const base=values("--base")[0]??git("tag","--sort=-version:refname").split(/\r?\n/)[0]??"HEAD";
 let files=explicit.length?explicit:[...git("diff","--name-only","--no-renames",base||"HEAD","--").split(/\r?\n/),...git("ls-files","--others","--exclude-standard").split(/\r?\n/)];
 files=[...new Set(files.filter(Boolean).map(file=>file.replaceAll("\\","/")))];
-if(!explicit.length)files=files.filter(file=>/^(src\/|src-tauri\/(src\/|native\/|vendor\/wcap\/)|tests\/(capture_0366|capture_toolbar_ui|pin_annotation|video_editor_ui)\.py$)/.test(file)).filter(file=>{
+if(!explicit.length)files=files.filter(file=>/^(src\/|src-tauri\/(src\/|native\/|vendor\/wcap\/)|tests\/(capture_0366|capture_toolbar_ui|capture_area_annotations|capture_history_native|pin_annotation|video_editor_ui)\.py$)/.test(file)).filter(file=>{
   if(!existsSync(file))return true;
   // Release snapshots can contain files still untracked in the current checkout.
   // Compare their actual contents, so unchanged old work does not select tests.
@@ -59,6 +59,7 @@ for(const file of files){
   }
   if(file==="tests/capture_toolbar_ui.py")browser("Захват: подсказки и один ряд цветов","tests/capture_toolbar_ui.py");
   if(/^src\/capture\/|^src\/capture\.css$|^tests\/capture_0366\.py$/.test(file))browser("Захват: направляющие, история, цвета, Shift","tests/capture_0366.py");
+  if(/^src\/capture\/|^src\/capture\.css$|^tests\/capture_area_annotations\.py$/.test(file))browser("Захват: курсор, очистка, редактируемая история и панели","tests/capture_area_annotations.py");
   if(/^src\/capture\/|^src\/capture\.css$|^tests\/pin_annotation\.py$/.test(file))browser("Аннотации закрепа","tests/pin_annotation.py");
   if(/^src\/video\/|^tests\/video_editor_ui\.py$/.test(file))browser("Видео: только интерфейс редактора","tests/video_editor_ui.py");
   if(file==="src/components/useQuickSaveHover.ts"){
@@ -74,7 +75,8 @@ for(const file of files){
   if(/^src-tauri\/(src\/video\.rs|native\/video\.c|vendor\/wcap\/)/.test(file)){
     rust("video::tests");if(native)add("Нативная запись и экспорт видео","python",["-B","tests/video_native.py","changed-backend"]);
   }
-  if(native&&/^src-tauri\/src\/(capture_history|data|screenshot)\.rs$/.test(file))add("Нативный захват и история","python",["-B","tests/capture_0366_native.py"]);
+  if(native&&(file==="src-tauri/src/capture_history.rs"||file==="tests/capture_history_native.py"))add("Нативная история аннотаций",testPython,["-B","tests/capture_history_native.py"]);
+  if(native&&/^src-tauri\/src\/(data|screenshot)\.rs$/.test(file))add("Нативный захват и история","python",["-B","tests/capture_0366_native.py"]);
 }
 if(fullVideo)add("Полный прогон видео (явно запрошен)","python",["-B","tests/video_native.py","explicit-full"]);
 console.log(`База сравнения: ${explicit.length?"явно перечисленные файлы":base||"HEAD"}`);

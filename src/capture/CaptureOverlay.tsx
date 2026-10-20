@@ -17,6 +17,7 @@ import { normalizeUiTheme, resolveUiTheme } from "../uiTheme";
 import { isDemoMode } from "./demo";
 import { drawShape, hitTest, shapeBounds, type Pt, type Shape, type ShapeKind, type DrawShape } from "./shapes";
 import { useAnnotationScene } from "./useAnnotationScene";
+import { transformAnnotations } from "./annotationCoordinates";
 import { useTextTool } from "./useTextTool";
 import { TextEditor, TextFrame } from "./TextEditor";
 import { waitForCapturePaint } from "./capturePresentation";
@@ -364,7 +365,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   const [altHeld,setAltHeld]=useState(false);const altHeldRef=useRef(false);
   const [historyPosition,setHistoryPosition]=useState(-1);
   const historyCursor=useRef(-1),historyRequest=useRef(0),historyLoading=useRef(false),historyUrl=useRef<string|null>(null),historySourceId=useRef<string|null>(null);
-  type HistoryEntry={id:string;width:number;height:number;originX:number;originY:number;selection:{x:number;y:number;width:number;height:number}};
+  type HistoryEntry={id:string;width:number;height:number;originX:number;originY:number;selection:{x:number;y:number;width:number;height:number};annotations?:Shape[]};
   const historyEntries=useRef<HistoryEntry[]>([]);
   const [historyCount,setHistoryCount]=useState(0);
   const currentCapture=useRef<{info:CaptureInfo|null;url:string|null;selection:Rect|null;scene:ReturnType<typeof scene.snapshot>;placement:Rect|null;scale:number;viewport:{w:number;h:number};tool:ShapeKind|null;selectedId:number|null}|null>(null);
@@ -538,7 +539,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     return()=>{alive=false;historyRequest.current++;if(historyUrl.current){URL.revokeObjectURL(historyUrl.current);historyUrl.current=null;}};
   },[sessionSeq,demo,!!pinEditor]);
   useEffect(()=>{
-    const update=(e:KeyboardEvent)=>{altHeldRef.current=e.altKey;setAltHeld(e.altKey);if(e.key==="Alt")e.preventDefault();};
+    const update=(e:KeyboardEvent)=>{altHeldRef.current=e.altKey;setAltHeld(e.altKey);if(e.altKey)setPointer(pointerRef.current);if(e.key==="Alt")e.preventDefault();};
     const clear=()=>{altHeldRef.current=false;setAltHeld(false);};
     window.addEventListener("keydown",update,true);window.addEventListener("keyup",update,true);window.addEventListener("blur",clear);
     return()=>{window.removeEventListener("keydown",update,true);window.removeEventListener("keyup",update,true);window.removeEventListener("blur",clear);};
@@ -546,8 +547,10 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   const historyContext=()=>{
     if(demo||pinEditorRef.current)return null;const r=selRef.current,i=infoRef.current,scale=kRef.current,b=sourcePlacementRef.current;
     if(!r||!i)return null;
+    const annotations=transformAnnotations(textToolRef.current.commit(),scale,{x:-(b?.x??0)*scale,y:-(b?.y??0)*scale},true)
+      .map((shape,index)=>({...shape,id:index+1}));
     return {name:historySourceId.current??i.imageName,selection:{x:Math.max(0,Math.round((r.x-(b?.x??0))*scale)),y:Math.max(0,Math.round((r.y-(b?.y??0))*scale)),
-      width:Math.max(1,Math.round(r.w*scale)),height:Math.max(1,Math.round(r.h*scale))}};
+      width:Math.max(1,Math.round(r.w*scale)),height:Math.max(1,Math.round(r.h*scale))},annotations};
   };
   const persistHistory=async(context:ReturnType<typeof historyContext>)=>{if(!context)return;
     try{await invoke("snipcast_capture_history_record",context);}catch(err){console.error("[Snipcast] screenshot history",err);}
@@ -564,7 +567,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         const view=vpRef.current,source=saved.info;const fit=source?Math.min(view.w/source.width,view.h/source.height):1;
         const placement=source?{x:(view.w-source.width*fit)/2,y:(view.h-source.height*fit)/2,w:source.width*fit,h:source.height*fit}:null;
         const ratio=source?fit*saved.scale:1;
-        sourcePlacementRef.current=placement;setSourcePlacement(placement);setInfo(source);setImgUrl(saved.url);scene.restore(saved.scene);
+        sourcePlacementRef.current=placement;setSourcePlacement(placement);setInfo(source);setImgUrl(saved.url);setK(saved.scale/ratio);scene.restore(saved.scene);
         if(saved.placement)scene.translate(-saved.placement.x,-saved.placement.y);if(ratio!==1)scene.scale(ratio,ratio);if(placement&&(placement.x||placement.y))scene.translate(placement.x,placement.y);
         setSel(saved.selection?{x:(saved.selection.x-(saved.placement?.x??0))*ratio+(placement?.x??0),y:(saved.selection.y-(saved.placement?.y??0))*ratio+(placement?.y??0),w:saved.selection.w*ratio,h:saved.selection.h*ratio}:null);
         setTool(saved.tool);setSelectedId(saved.selectedId);
@@ -580,7 +583,9 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         sourcePlacementRef.current=placement;setSourcePlacement(placement);setK(1/fit);
         if(historyUrl.current)URL.revokeObjectURL(historyUrl.current);historyUrl.current=url;
         historySourceId.current=entry.id;setInfo({...currentCapture.current!.info!,candidates:[],preset:undefined});setImgUrl(url);
-        scene.reset();setTool(null);setSelectedId(null);setSelecting(false);
+        scene.reset();
+        setShapes(transformAnnotations(entry.annotations??[],fit,placement).map(shape=>({...shape,id:idSeqRef.current++})));
+        setTool(null);setSelectedId(null);setSelecting(false);
         setSel({x:placement.x+entry.selection.x*fit,y:placement.y+entry.selection.y*fit,w:entry.selection.width*fit,h:entry.selection.height*fit});setHistoryPosition(next);
       }
     }catch(err){
@@ -1214,7 +1219,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     const onMove = (e: PointerEvent) => {
       pointerRef.current={x:e.clientX,y:e.clientY};
       hintMotion.current.move?.(pointerRef.current);
-      if (!selRef.current || dragRef.current?.mode === "new") setPointer(pointerRef.current);
+      if (altHeldRef.current || !selRef.current || dragRef.current?.mode === "new") setPointer(pointerRef.current);
       // Подсветка пункта меню быстрых мест, пока кнопка удерживается
       if (holdRef.current?.fired) {
         const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-quick-idx]");
@@ -1601,6 +1606,8 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
 
   // Рамка выбранной фигуры: ключевые точки
   const selectedShape = shapes.find((s) => s.id === selectedId) ?? null;
+  const isTextContext = !!edit || selectedShape?.kind === "text" || tool === "text";
+  const optsTool = isTextContext ? "text" : tool??selectedShape?.kind;
 
   // Измерение панели инструментов для позиционирования
   useLayoutEffect(() => {
@@ -1622,24 +1629,26 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     const margin = 8;
     let left = sel.x + sel.w / 2 - size.w / 2;
     left = Math.max(bounds.x+margin, Math.min(left, bounds.x+bounds.w - size.w - margin));
-    let top = sel.y + sel.h + margin;
-    const reserve=pinEditor&&(tool||edit||selectedShape?.kind==="text")?optsSize.h+8:0;
-    if (top + size.h+reserve > bounds.y+bounds.h - margin) top = sel.y - margin - size.h-reserve;
-    top=Math.max(bounds.y+margin,Math.min(top,bounds.y+bounds.h-size.h-margin));
-    return { left, top, right: vp.w - (left + size.w), bottom: top + size.h,bounds };
+    const reserve=optsTool?optsSize.h+margin:0;
+    const height=size.h+reserve;
+    const below=bounds.y+bounds.h-margin-(sel.y+sel.h+margin);
+    const above=sel.y-margin-(bounds.y+margin);
+    const side=below>=height?"below":above>=height||above>below?"above":"below";
+    const desired=side==="below"?sel.y+sel.h+margin:sel.y-margin-height;
+    const start=Math.max(bounds.y+margin,Math.min(desired,bounds.y+bounds.h-height-margin));
+    const top=start+(side==="above"?reserve:0);
+    return { left, top, side, right: vp.w - (left + size.w), bottom: top + size.h,bounds };
   })();
 
   const theme = cfg ? resolveUiTheme(normalizeUiTheme(cfg.theme)) : "dark";
 
   const quickLocs = cfg?.screenshotQuickLocations ?? [];
-  const isTextContext = !!edit || selectedShape?.kind === "text" || tool === "text";
-  const optsTool = isTextContext ? "text" : tool??selectedShape?.kind;
   const optsRef=useRef<HTMLDivElement>(null);
   const anchorKind=optsTool&&["square","circle","ellipse"].includes(optsTool)?"rect":optsTool;
   const button=anchorKind?tbRef.current?.querySelector<HTMLElement>(`[data-tool-anchor="${anchorKind}"]`):null;
   const anchor=button?.getBoundingClientRect();
   const optsPlace=place?{left:Math.max(place.bounds.x+8,Math.min((anchor?anchor.x+anchor.width/2:place.left+30)-optsSize.w/2,place.bounds.x+place.bounds.w-optsSize.w-8)),
-    top:place.bottom+8+optsSize.h<=place.bounds.y+place.bounds.h-8?place.bottom+8:Math.max(place.bounds.y+8,place.top-optsSize.h-8)}:null;
+    top:place.side==="below"?place.bottom+8:place.top-optsSize.h-8}:null;
   const pinLayoutRequest=useRef({busy:false,again:false,run:null as (()=>void)|null,lastKey:""});
   useEffect(()=>{
     if(!pinEditor||demo||pinEditor.sessionId==null)return;
@@ -1662,7 +1671,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
       el.style.right="auto";
       const anchor=anchorKind?tbRef.current?.querySelector<HTMLElement>(`[data-tool-anchor="${anchorKind}"]`)?.getBoundingClientRect():null;
       el.style.left=`${Math.max(b.x+8,Math.min((anchor?anchor.x+anchor.width/2:place.left+30)-r.width/2,b.x+b.w-r.width-8))}px`;
-      el.style.top=`${place.bottom+8+r.height<=b.y+b.h-8?place.bottom+8:Math.max(b.y+8,place.top-r.height-8)}px`;
+      el.style.top=`${place.side==="below"?place.bottom+8:place.top-r.height-8}px`;
     }
     if(!pinEditor||demo||pinEditor.sessionId==null)return;
     const request=pinLayoutRequest.current;
@@ -1831,7 +1840,10 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         pinEditor ? null : <div className="capture__dim capture__dim--full" />
       )}
 
-      {altHeld&&sel&&!info?.videoSelection?<svg className="capture__guides" width={vp.w} height={vp.h} aria-hidden><path style={{strokeWidth:1/k,strokeDasharray:`${8/k} ${6/k}`}} d={`M ${sel.x+sel.w/2} 0 V ${vp.h} M 0 ${sel.y+sel.h/2} H ${vp.w}`} /></svg>:null}
+      {altHeld&&!info?.videoSelection&&(sel||pointer)?<svg className="capture__guides" width={vp.w} height={vp.h} aria-hidden>
+        {sel?<path style={{strokeWidth:1/k,strokeDasharray:`${8/k} ${6/k}`}} d={`M ${sel.x+sel.w/2} 0 V ${vp.h} M 0 ${sel.y+sel.h/2} H ${vp.w}`} />:null}
+        {pointer?<path className="capture__cursor-guides" style={{strokeWidth:1/k}} d={`M ${pointer.x} 0 V ${vp.h} M 0 ${pointer.y} H ${vp.w}`} />:null}
+      </svg>:null}
       <canvas ref={canvasRef} className="capture__shapes" />
       {draft?<canvas ref={draftCanvasRef} className="capture__shapes capture__shapes--draft" />:null}
 
@@ -1921,6 +1933,12 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
                 <span>{t.label}</span><kbd className="capture__tool-key">{i+1}</kbd>
               </button>
             ))}
+
+            {!info?.videoSelection&&(shapes.length>0||!!edit?.shape.text.trim())?<button
+              type="button" className="capture__btn" title="Удалить все фигуры и текст" disabled={busy}
+              onPointerDown={e=>e.preventDefault()}
+              onClick={()=>{textTool.commit();scene.change([]);setSelectedId(null);setTool(null);}}
+            ><SvgIcon><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7M14 10v7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></SvgIcon><span>Очистить</span></button>:null}
 
             {!info?.videoSelection?<span className="capture__toolbar-sep" aria-hidden />:null}
 
@@ -2013,7 +2031,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
             ref={optsRef}
             className="capture__opts"
             onPointerDown={(e) => { if ((e.target as HTMLElement).closest("button")) e.preventDefault(); }}
-            style={optsPlace??undefined}
+            style={{...optsPlace,maxHeight:Math.max(40,place.bounds.h-(tbSize?.h??58)-32),boxSizing:"border-box",overflowY:"auto"}}
           >
             {optsTool === "rect" ? (
               <div className="capture__opts-shapes">

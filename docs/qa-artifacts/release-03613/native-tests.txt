@@ -1,0 +1,16 @@
+
+> snipcast@0.36.13 test:changed
+> node scripts/test-changed.mjs --native --files src-tauri/src/capture_history.rs tests/capture_history_native.py
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 1
+Проверка: Нативная история аннотаций
+{
+  "editableAnnotationsPersistAfterRestart": true,
+  "legacyIndexCompatible": true,
+  "annotationVariantsDeduplicated": true,
+  "clearUndo": true,
+  "clearedSavePixelsExact": true,
+  "oldVariantPreserved": true,
+  "limit30AndCleanup": true
+}

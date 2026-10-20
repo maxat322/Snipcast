@@ -1,0 +1,65 @@
+[
+  {
+    "theme": "dark",
+    "dpi": 1,
+    "sourcePixelsExact": true,
+    "guides": true,
+    "palette": true,
+    "endpointShift": true,
+    "hoverSave": true
+  },
+  {
+    "theme": "light",
+    "dpi": 1,
+    "sourcePixelsExact": true,
+    "guides": true,
+    "palette": true,
+    "endpointShift": true,
+    "hoverSave": true
+  },
+  {
+    "theme": "dark",
+    "dpi": 1.5,
+    "sourcePixelsExact": true,
+    "guides": true,
+    "palette": true,
+    "endpointShift": true,
+    "hoverSave": true
+  },
+  {
+    "theme": "light",
+    "dpi": 1.5,
+    "sourcePixelsExact": true,
+    "guides": true,
+    "palette": true,
+    "endpointShift": true,
+    "hoverSave": true
+  },
+  {
+    "theme": "dark",
+    "dpi": 2,
+    "sourcePixelsExact": true,
+    "guides": true,
+    "palette": true,
+    "endpointShift": true,
+    "hoverSave": true
+  },
+  {
+    "theme": "light",
+    "dpi": 2,
+    "sourcePixelsExact": true,
+    "guides": true,
+    "palette": true,
+    "endpointShift": true,
+    "hoverSave": true
+  },
+  {
+    "historyAspectRatio": true,
+    "workingAnnotationsAndUndo": true,
+    "remappedCopy": true,
+    "numpad": true,
+    "viewportResizeAndRepeatedReturn": true,
+    "staleLoadIgnored": true,
+    "corruptRecordSkipped": true
+  }
+]

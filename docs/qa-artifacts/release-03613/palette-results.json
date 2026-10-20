@@ -1,0 +1,14 @@
+[
+  {
+    "theme": "dark",
+    "videoButtonAbsent": true,
+    "searchWorks": true,
+    "pageErrors": []
+  },
+  {
+    "theme": "light",
+    "videoButtonAbsent": true,
+    "searchWorks": true,
+    "pageErrors": []
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "editableAnnotationsPersistAfterRestart": true,
+  "legacyIndexCompatible": true,
+  "annotationVariantsDeduplicated": true,
+  "clearUndo": true,
+  "clearedSavePixelsExact": true,
+  "oldVariantPreserved": true,
+  "limit30AndCleanup": true
+}

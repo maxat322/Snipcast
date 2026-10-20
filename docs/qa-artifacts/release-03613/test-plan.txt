@@ -1,0 +1,9 @@
+
+> snipcast@0.36.13 test:changed
+> node scripts/test-changed.mjs --list --files src/App.tsx src/capture.css src/capture/CaptureOverlay.tsx src/capture/annotationCoordinates.ts src-tauri/src/capture_history.rs package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 3
+План: Захват: направляющие, история, цвета, Shift
+План: Захват: курсор, очистка, редактируемая история и панели
+План: Аннотации закрепа

@@ -20,7 +20,6 @@ import {
 } from "./uiTheme";
 import "./theme-overrides.css";
 import "./App.css";
-import {VideoIcon} from "./video/VideoApp";
 
 function IconFolderOutline({ className }: { className?: string }) {
   return (
@@ -993,8 +992,6 @@ function App() {
             aria-controls="snipcast-listbox"
             aria-activedescendant={activeDescendantId}
           />
-          <button type="button" className="palette__group-tab" title="Записать видео области" aria-label="Записать видео области" data-tauri-drag-region="false"
-            onClick={()=>void invoke("snipcast_video_select").catch(e=>setLoadError(String(e)))}><VideoIcon name="video"/></button>
         </div>
         <div className="palette__group-tabs" role="tablist" aria-label="Группы">
           <button

@@ -1,0 +1,5 @@
+   Compiling hex v0.4.3
+   Compiling webview2-com v0.38.2
+   Compiling tauri-plugin-single-instance v2.4.5
+    Finished `release` profile [optimized] target(s) in 4m 06s
+       Built application at: C:\Users\designer\Desktop\Dev\Snipcast\src-tauri\target\release\snipcast.exe
