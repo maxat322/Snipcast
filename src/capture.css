@@ -420,6 +420,11 @@ html.pin-root #root {
   pointer-events: auto;
 }
 
+.capture__ui [data-drawing-occluded] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .capture__toolbar {
   position: absolute;
   display: flex;

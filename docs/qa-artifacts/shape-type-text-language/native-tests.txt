@@ -1,0 +1,52 @@
+
+> snipcast@0.36.13 test:changed
+> node scripts/test-changed.mjs --native --files src-tauri/src/capture_keyboard.rs tests/capture_text_language_native.py
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 2
+Проверка: Rust: capture_keyboard::tests
+    Finished `release` profile [optimized] target(s) in 0.54s
+     Running unittests src\lib.rs (src-tauri\target\release\deps\snipcast_lib-dc6c08b2e696a51e.exe)
+
+running 3 tests
+test capture_keyboard::tests::own_tools_only ... ok
+test capture_keyboard::tests::defaults_and_alt ... ok
+test capture_keyboard::tests::remapping_and_extended_keys ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 51 filtered out; finished in 0.00s
+
+Проверка: Текст захвата: системная раскладка WebView2
+{
+  "observations": [
+    {
+      "requestedLanguage": "0x409",
+      "parentThread": 9748,
+      "focusThread": 57192,
+      "parentLayout": "0x4090409",
+      "focusLayout": "0x4090409",
+      "expected": "q",
+      "actual": "q"
+    },
+    {
+      "requestedLanguage": "0x419",
+      "parentThread": 9748,
+      "focusThread": 57192,
+      "parentLayout": "0x4090409",
+      "focusLayout": "0x4190419",
+      "expected": "q\u0439",
+      "actual": "q\u0439"
+    },
+    {
+      "requestedLanguage": "0x409",
+      "parentThread": 9748,
+      "focusThread": 57192,
+      "parentLayout": "0x4090409",
+      "focusLayout": "0x4090409",
+      "expected": "q\u0439q",
+      "actual": "q\u0439q"
+    }
+  ],
+  "languageChangesAffectText": true,
+  "textSessionKeptOpen": true,
+  "nativeFocusChangeKeepsTextAndCaret": true
+}

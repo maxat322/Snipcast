@@ -1,0 +1,11 @@
+{
+  "version": "0.36.13",
+  "sha256": "141d99115abb0b47ecfbddd6379ce640bd3e04b3b24e85b863a4cfc7b5a5accb",
+  "bytes": 18160640,
+  "frontend": "index-CGvLKe0i.js",
+  "sourceSha256": {
+    "src/capture/CaptureOverlay.tsx": "cc234bf7e854d95999736804bb241abe1b51491b5db5f00e55659bf3388fb820",
+    "src/capture/TextEditor.tsx": "c742bdfe834ab6981ff9318c50fc60fad553f300a13d6e2079f1fa931a14847a",
+    "src-tauri/src/capture_keyboard.rs": "77e4fc311beb59e9d9ef2e6c9041f6966babe5e54bf2dc2a991432e778d72d66"
+  }
+}

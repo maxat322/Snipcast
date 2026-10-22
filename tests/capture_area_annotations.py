@@ -118,6 +118,86 @@ with sync_playwright() as p:
         for tool in ('arrow','rect','text'):
             page.locator(f'[data-tool-anchor={tool}]').click();assert_panels(page,side,start[1] if side=='above' else end[1] if end[1]<850 else None)
         page.screenshot(path=str(OUT/f'panels-{width}-{start[1]}.png'));assert not errors,errors;page.close()
+    for theme in ('dark','light'):
+        page,_,errors=fixture(browser,theme=theme);drag(page,(100,100),(1150,620))
+        page.locator('[data-tool-anchor=rect]').click();page.get_by_role('button',name='Круг',exact=True).click()
+        page.get_by_role('button',name='Заливка',exact=True).click();drag(page,(350,220),(510,380))
+        original=copy(page)['annotations'][0];assert original['kind']=='circle'
+        for label,kind in [('Квадрат','square'),('Овал','ellipse'),('Прямоугольник','rect'),('Круг','circle')]:
+            page.get_by_role('button',name=label,exact=True).click()
+            record=copy(page);assert len(record['annotations'])==1
+            assert record['annotations'][0]=={**original,'kind':kind},record
+            expect(page.get_by_role('button',name=label,exact=True)).to_have_class('capture__shape-btn is-active')
+        page.keyboard.press('Control+z');assert copy(page)['annotations'][0]['kind']=='rect'
+        page.keyboard.press('Control+Shift+z');assert copy(page)['annotations'][0]['kind']=='circle'
+        # Reselecting an existing shape while the drawing tool is off still
+        # exposes all four type buttons and highlights the object's own type.
+        page.locator('[data-tool-anchor=rect]').click();page.mouse.click(430,300)
+        page.get_by_role('button',name='Квадрат',exact=True).click();assert copy(page)['annotations'][0]['kind']=='square'
+        page.get_by_role('button',name='Очистить',exact=True).click()
+        page.locator('[data-tool-anchor=rect]').click();page.get_by_role('button',name='Прямоугольник',exact=True).click()
+        drag(page,(350,220),(550,320));rectangle=copy(page)['annotations'][0]
+        page.get_by_role('button',name='Круг',exact=True).click();circle=copy(page)['annotations'][0]
+        assert circle['id']==rectangle['id'] and circle['p1']==dict(x=350,y=170) and circle['p2']==dict(x=550,y=370),circle
+        page.keyboard.press('Control+z');assert copy(page)['annotations'][0]==rectangle
+        assert not errors,errors;page.close()
+        results.append(dict(theme=theme,selectedShapeTypeChanges=True,typeUndoRedo=True,reselectedShapeType=True,circleKeepsCenterAndEqualSides=True))
+    for theme in ('dark','light'):
+        page,_,errors=fixture(browser,theme=theme);drag(page,(100,100),(1150,620))
+        page.locator('[data-tool-anchor=text]').click();page.mouse.click(400,300)
+        text=page.get_by_role('textbox',name='Текст на скриншоте');text.fill('Русский English')
+        text.evaluate('el=>el.setSelectionRange(7,7)')
+        page.evaluate("window.dispatchEvent(new Event('blur'))")
+        expect(text).to_have_value('Русский English')
+        page.evaluate("window.dispatchEvent(new Event('focus'))")
+        assert text.evaluate('el=>el.selectionStart')==7
+        page.keyboard.type('!');assert '!' in text.input_value()
+        page.mouse.click(650,500);expect(text).to_have_count(0)
+        assert copy(page)['annotations'][0]['text']=='Русский! English'
+        assert not errors,errors;page.close()
+        results.append(dict(theme=theme,textSessionSurvivesSystemFocusChange=True,outsideClickStillCommits=True))
+    # Near-full-height selections force the panels over the image. A drawing
+    # must pass through either panel without clicking its controls or jumping.
+    for theme in ('dark','light'):
+      for tool in ('arrow','line','rect','freehand','text'):
+        page,_,errors=fixture(browser,theme=theme)
+        drag(page,(400,20),(845,880));page.locator(f'[data-tool-anchor={tool}]').click()
+        main=page.locator('.capture__toolbar');opts=page.locator('.capture__opts')
+        page.wait_for_timeout(100)
+        boxes=[panel.bounding_box() for panel in (main,opts)]
+        # Hovering controls outside a drawing gesture keeps them usable.
+        page.mouse.move(boxes[0]['x']+boxes[0]['width']/2,boxes[0]['y']+boxes[0]['height']/2)
+        expect(main).to_be_visible()
+        page.mouse.move(650,200);page.mouse.down()
+        for index,panel in enumerate((main,opts)):
+            r=boxes[index];end=(round(r['x']+r['width']/2),round(r['y']+r['height']/2))
+            page.mouse.move(*end,steps=6);expect(panel).to_be_hidden()
+            expect((opts,main)[index]).to_be_hidden()
+            actual=panel.evaluate('el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}}')
+            assert actual==r,(actual,r)
+            assert not page.evaluate("([x,y])=>document.elementFromPoint(x,y)?.closest('.capture__toolbar,.capture__opts')!=null",list(end))
+            if theme=='dark' and tool=='arrow' and index==1:page.screenshot(path=str(OUT/'drawing-through-options.png'))
+        page.mouse.move(650,400);expect(main).to_be_visible();expect(opts).to_be_visible()
+        page.mouse.move(*end);expect(main).to_be_hidden();expect(opts).to_be_hidden();page.mouse.up()
+        expect(main).to_be_visible();expect(opts).to_be_visible()
+        if tool=='text':page.get_by_role('textbox',name='Текст на скриншоте').fill('Поверх панели')
+        record=copy(page);assert len(record['annotations'])==1,record
+        shape=record['annotations'][0]
+        if tool!='text':assert shape['p2']==dict(x=end[0],y=end[1]),shape
+        else:assert shape['text']=='Поверх панели'
+        assert not errors,errors;page.close()
+      for finish in ('escape','pointercancel','blur'):
+        page,_,errors=fixture(browser,theme=theme);drag(page,(400,20),(845,880))
+        page.locator('[data-tool-anchor=arrow]').click();main=page.locator('.capture__toolbar');r=main.bounding_box()
+        page.mouse.move(650,200);page.mouse.down();page.mouse.move(r['x']+r['width']/2,r['y']+r['height']/2)
+        expect(main).to_be_hidden()
+        if finish=='escape':page.keyboard.press('Escape')
+        elif finish=='pointercancel':page.locator('.capture').dispatch_event('pointercancel',dict(pointerId=1,bubbles=True))
+        else:page.evaluate("window.dispatchEvent(new Event('blur'))")
+        expect(main).to_be_visible();page.mouse.up()
+        if finish!='blur':assert copy(page)['annotations']==[]
+        assert not errors,errors;page.close()
+      results.append(dict(theme=theme,panelsYieldTogetherToDrawing=True,panelsKeepGeometry=True,releaseAndCancelRestorePanels=True))
     page,_,errors=fixture(browser,history=[dict(id='legacy',width=1280,height=900,originX=0,originY=0,selection=dict(x=100,y=100,width=400,height=300))]);page.keyboard.press('-');assert copy(page)['annotations']==[];assert not errors;page.close()
     browser.close()
 (OUT/'results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf8');print(json.dumps(results,ensure_ascii=False))

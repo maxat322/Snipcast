@@ -36,8 +36,10 @@ export function TextEditor({ tool }: { tool: TextTool }) {
   }, [session?.key]);
   useEffect(() => {
     const onWindowBlur = () => {
+      remember();
       if (tool.gestureRef.current) tool.cancel();
-      tool.commit();
+      // A system input-language popup may temporarily deactivate WebView2.
+      // Keep the text session and caret until the user finishes editing it.
     };
     const onPropertiesUp = (e: PointerEvent) => {
       if (!(e.target instanceof Element) || !e.target.closest(".capture__opts")) return;
@@ -76,6 +78,7 @@ export function TextEditor({ tool }: { tool: TextTool }) {
       onInput={(e) => { tool.update({ text: e.currentTarget.value }); remember(); }}
       onBlur={(e) => {
         remember();
+        if (e.relatedTarget == null && !document.hasFocus()) return;
         if (e.relatedTarget instanceof Element && e.relatedTarget.closest(".capture__opts")) return;
         if (tool.gestureRef.current) return;
         tool.commit();

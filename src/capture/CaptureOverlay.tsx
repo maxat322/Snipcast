@@ -1216,6 +1216,47 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   };
 
   useEffect(() => {
+    const hidden = new Set<HTMLElement>();
+    const restore = () => {
+      for (const panel of hidden) panel.removeAttribute("data-drawing-occluded");
+      hidden.clear();
+    };
+    const avoidPointer = (event: PointerEvent) => {
+      const mode = dragRef.current?.mode;
+      if (!["draw", "shapeMove", "shapePoint"].includes(mode ?? "") && !textToolRef.current.gestureRef.current) {
+        restore();
+        return;
+      }
+      // Treat the main toolbar and its auxiliary panels as one block. Keep them
+      // mounted and measured so hiding them cannot change their placement.
+      const panels = Array.from(rootRef.current?.querySelectorAll<HTMLElement>(".capture__toolbar,.capture__opts,.capture__quick") ?? []);
+      const covered = panels.some(panel => {
+        const r = panel.getBoundingClientRect();
+        return event.clientX >= r.left - 8 && event.clientX <= r.right + 8 &&
+          event.clientY >= r.top - 8 && event.clientY <= r.bottom + 8;
+      });
+      for (const panel of panels) {
+        panel.toggleAttribute("data-drawing-occluded", covered);
+        if (covered) hidden.add(panel); else hidden.delete(panel);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") restore(); };
+    window.addEventListener("pointermove", avoidPointer, true);
+    window.addEventListener("pointerup", restore, true);
+    window.addEventListener("pointercancel", restore, true);
+    window.addEventListener("blur", restore);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      restore();
+      window.removeEventListener("pointermove", avoidPointer, true);
+      window.removeEventListener("pointerup", restore, true);
+      window.removeEventListener("pointercancel", restore, true);
+      window.removeEventListener("blur", restore);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, []);
+
+  useEffect(() => {
     const onMove = (e: PointerEvent) => {
       pointerRef.current={x:e.clientX,y:e.clientY};
       hintMotion.current.move?.(pointerRef.current);
@@ -1607,7 +1648,22 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   // Рамка выбранной фигуры: ключевые точки
   const selectedShape = shapes.find((s) => s.id === selectedId) ?? null;
   const isTextContext = !!edit || selectedShape?.kind === "text" || tool === "text";
-  const optsTool = isTextContext ? "text" : tool??selectedShape?.kind;
+  const contextTool = tool ?? selectedShape?.kind;
+  const optsTool = isTextContext ? "text" : contextTool && ["rect","square","circle","ellipse"].includes(contextTool) ? "rect" : contextTool;
+  const activeShapeKind = selectedShape && ["rect","square","circle","ellipse"].includes(selectedShape.kind) ? selectedShape.kind : shapeKind;
+  const applyShapeKind = (kind: Extract<ShapeKind,"rect"|"square"|"circle"|"ellipse">) => {
+    setShapeKind(kind);
+    if (!selectedShape || !["rect","square","circle","ellipse"].includes(selectedShape.kind) || selectedShape.kind === kind) return;
+    scene.change(prev => prev.map(shape => {
+      if (shape.id !== selectedShape.id || shape.kind === "text") return shape;
+      if (kind === "circle" || kind === "square") {
+        const box = shapeBounds(shape), side = Math.max(box.w, box.h);
+        const p1 = {x:box.x+(box.w-side)/2,y:box.y+(box.h-side)/2};
+        return {...shape,kind,p1,p2:{x:p1.x+side,y:p1.y+side}};
+      }
+      return {...shape,kind};
+    }));
+  };
 
   // Измерение панели инструментов для позиционирования
   useLayoutEffect(() => {
@@ -2048,8 +2104,8 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
                     type="button"
                     title={f.label}
                     aria-label={f.label}
-                    className={`capture__shape-btn${shapeKind === f.kind ? " is-active" : ""}`}
-                    onClick={() => setShapeKind(f.kind)}
+                    className={`capture__shape-btn${activeShapeKind === f.kind ? " is-active" : ""}`}
+                    onClick={() => applyShapeKind(f.kind)}
                   >
                     {f.icon}
                   </button>

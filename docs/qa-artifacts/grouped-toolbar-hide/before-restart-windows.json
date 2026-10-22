@@ -1,0 +1,77 @@
+{
+  "processes": {
+    "9808": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\snipcast.exe"
+  },
+  "windows": [
+    {
+      "pid": 9808,
+      "hwnd": 328882,
+      "title": "Snipcast",
+      "cls": "Tauri Window",
+      "visible": false
+    },
+    {
+      "pid": 9808,
+      "hwnd": 2626160,
+      "title": "Быстрая палитра — Snipcast",
+      "cls": "Tauri Window",
+      "visible": false
+    },
+    {
+      "pid": 9808,
+      "hwnd": 2231526,
+      "title": "Snipcast",
+      "cls": "Tauri Window",
+      "visible": false
+    },
+    {
+      "pid": 9808,
+      "hwnd": 328930,
+      "title": "",
+      "cls": "tray_icon_app",
+      "visible": false
+    },
+    {
+      "pid": 9808,
+      "hwnd": 19663756,
+      "title": "Настройки — Snipcast",
+      "cls": "Tauri Window",
+      "visible": false
+    },
+    {
+      "pid": 9808,
+      "hwnd": 656870,
+      "title": "",
+      "cls": "global_hotkey_app",
+      "visible": false
+    },
+    {
+      "pid": 9808,
+      "hwnd": 71963032,
+      "title": "com.snipcast.app-siw",
+      "cls": "com.snipcast.app-sic",
+      "visible": true
+    },
+    {
+      "pid": 9808,
+      "hwnd": 16388840,
+      "title": "",
+      "cls": "Tao Thread Event Target",
+      "visible": true
+    },
+    {
+      "pid": 9808,
+      "hwnd": 394438,
+      "title": "MSCTFIME UI",
+      "cls": "MSCTFIME UI",
+      "visible": false
+    },
+    {
+      "pid": 9808,
+      "hwnd": 38605492,
+      "title": "Default IME",
+      "cls": "IME",
+      "visible": false
+    }
+  ]
+}

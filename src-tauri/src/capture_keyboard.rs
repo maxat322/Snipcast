@@ -383,6 +383,24 @@ mod win {
         let location = if code.starts_with("Numpad") { 3 } else { 0 };
         (code, key, location)
     }
+    unsafe fn input_thread(hwnd: HWND) -> u32 {
+        let owner = GetWindowThreadProcessId(hwnd, std::ptr::null_mut());
+        if !slot(hwnd).is_some_and(|s| TEXT[s].load(Relaxed)) {
+            return owner;
+        }
+        let mut info: GUITHREADINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
+        // WebView2's focused child can have a different input language from
+        // the Tauri window thread after a normal Windows language switch.
+        if GetGUIThreadInfo(owner, &mut info) != 0
+            && !info.hwndFocus.is_null()
+            && GetAncestor(info.hwndFocus, GA_ROOT) == hwnd
+        {
+            GetWindowThreadProcessId(info.hwndFocus, std::ptr::null_mut())
+        } else {
+            owner
+        }
+    }
     unsafe extern "system" fn route(
         hwnd: HWND,
         message: u32,
@@ -434,7 +452,7 @@ mod win {
                     chars.as_mut_ptr(),
                     8,
                     0,
-                    GetKeyboardLayout(GetWindowThreadProcessId(hwnd, std::ptr::null_mut())),
+                    GetKeyboardLayout(input_thread(hwnd)),
                 )
             };
             let text = if count > 0 {

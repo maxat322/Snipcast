@@ -98,6 +98,14 @@ with sync_playwright() as p:
             image_box=open_editor(page)
             x=image_box['x'];y=image_box['y'];w=image_box['width'];h=image_box['height']
             page.get_by_title('Нарисовать линию (2)',exact=True).click()
+            # Pin editors share the same panel avoidance during a drawing.
+            options=page.locator('.capture__opts');panel=options.bounding_box()
+            target=(panel['x']+panel['width']/2,panel['y']+panel['height']/2)
+            page.mouse.move(x+w*.15,y+h*.15);page.mouse.down();page.mouse.move(*target,steps=6)
+            toolbar=page.locator('.capture__toolbar')
+            expect(options).to_be_hidden();expect(toolbar).to_be_hidden()
+            page.mouse.up();expect(options).to_be_visible();expect(toolbar).to_be_visible()
+            page.keyboard.press('Control+z')
             drag(page,(x+w*.2,y+h*.25),(x+w*.65,y+h*.55))
             page.keyboard.press('Control+z');page.keyboard.press('Control+Shift+z')
             page.get_by_title('Добавить текст (5)',exact=True).click()

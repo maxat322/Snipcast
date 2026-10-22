@@ -1,0 +1,8 @@
+
+> snipcast@0.36.13 test:changed
+> node scripts/test-changed.mjs --list --native --files src-tauri/src/capture_keyboard.rs tests/capture_text_language_native.py
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 2
+План: Rust: capture_keyboard::tests
+План: Текст захвата: системная раскладка WebView2

@@ -1,0 +1,5 @@
+dist/assets/index-CGvLKe0i.js   443.26 kB │ gzip: 134.81 kB
+✓ built in 1.18s
+   Compiling snipcast v0.36.13 (C:\Users\designer\Desktop\Dev\Snipcast\src-tauri)
+    Finished `release` profile [optimized] target(s) in 1m 05s
+       Built application at: C:\Users\designer\Desktop\Dev\Snipcast\src-tauri\target\release\snipcast.exe

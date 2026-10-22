@@ -71,6 +71,8 @@ for(const file of files){
   if(file==="src-tauri/src/data.rs")rust("data::tests");
   if(file==="src-tauri/src/lib.rs")rust("capture_hotkey_tests");
   if(file==="src-tauri/src/capture_detection.rs")rust("capture_detection::tests");
+  if(file==="src-tauri/src/capture_keyboard.rs")rust("capture_keyboard::tests");
+  if(native&&(file==="src-tauri/src/capture_keyboard.rs"||file==="tests/capture_text_language_native.py"))add("Текст захвата: системная раскладка WebView2",testPython,["-B","tests/capture_text_language_native.py"]);
   if(file==="src-tauri/src/screenshot.rs")rust("screenshot::tests");
   if(/^src-tauri\/(src\/video\.rs|native\/video\.c|vendor\/wcap\/)/.test(file)){
     rust("video::tests");if(native)add("Нативная запись и экспорт видео","python",["-B","tests/video_native.py","changed-backend"]);

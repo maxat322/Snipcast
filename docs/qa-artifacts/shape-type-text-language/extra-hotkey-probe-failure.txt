@@ -1,0 +1,12 @@
+test capture_keyboard::tests::remapping_and_extended_keys ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 51 filtered out; finished in 0.00s
+
+Проверка: Перехват: конфликт сочетаний, текст, фокус, диалог
+Traceback (most recent call last):
+  File "C:\Users\designer\Desktop\Dev\Snipcast\tests\capture_0368_native.py", line 54, in <module>
+    keys(0x11,0x12,0x76);pin=ns['find'](context,'.pin__shot');time.sleep(.2);assert counts[1]==1,'Capture command leaked to the competitor';results['competingPinHotkeySuppressed']=True
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\designer\Desktop\Dev\Snipcast\tests\capture_0366_native.py", line 39, in find
+    raise AssertionError('Native page missing '+selector)
+AssertionError: Native page missing .pin__shot

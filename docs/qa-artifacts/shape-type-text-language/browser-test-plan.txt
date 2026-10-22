@@ -1,0 +1,9 @@
+
+> snipcast@0.36.13 test:changed
+> node scripts/test-changed.mjs --list --files src/capture/CaptureOverlay.tsx src/capture/TextEditor.tsx tests/capture_area_annotations.py
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 3
+План: Захват: направляющие, история, цвета, Shift
+План: Захват: курсор, очистка, редактируемая история и панели
+План: Аннотации закрепа

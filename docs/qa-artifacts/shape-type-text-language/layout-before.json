@@ -1,0 +1,33 @@
+{
+  "observations": [
+    {
+      "requestedLanguage": "0x409",
+      "parentThread": 57996,
+      "focusThread": 13876,
+      "parentLayout": "0x4090409",
+      "focusLayout": "0x4090409",
+      "expected": "q",
+      "actual": "q"
+    },
+    {
+      "requestedLanguage": "0x419",
+      "parentThread": 57996,
+      "focusThread": 13876,
+      "parentLayout": "0x4090409",
+      "focusLayout": "0x4190419",
+      "expected": "q\u0439",
+      "actual": "qq"
+    },
+    {
+      "requestedLanguage": "0x409",
+      "parentThread": 57996,
+      "focusThread": 13876,
+      "parentLayout": "0x4090409",
+      "focusLayout": "0x4090409",
+      "expected": "qqq",
+      "actual": "qqq"
+    }
+  ],
+  "languageChangesAffectText": false,
+  "textSessionKeptOpen": true
+}

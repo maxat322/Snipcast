@@ -1,0 +1,34 @@
+{
+  "observations": [
+    {
+      "requestedLanguage": "0x409",
+      "parentThread": 9748,
+      "focusThread": 57192,
+      "parentLayout": "0x4090409",
+      "focusLayout": "0x4090409",
+      "expected": "q",
+      "actual": "q"
+    },
+    {
+      "requestedLanguage": "0x419",
+      "parentThread": 9748,
+      "focusThread": 57192,
+      "parentLayout": "0x4090409",
+      "focusLayout": "0x4190419",
+      "expected": "q\u0439",
+      "actual": "q\u0439"
+    },
+    {
+      "requestedLanguage": "0x409",
+      "parentThread": 9748,
+      "focusThread": 57192,
+      "parentLayout": "0x4090409",
+      "focusLayout": "0x4090409",
+      "expected": "q\u0439q",
+      "actual": "q\u0439q"
+    }
+  ],
+  "languageChangesAffectText": true,
+  "textSessionKeptOpen": true,
+  "nativeFocusChangeKeepsTextAndCaret": true
+}

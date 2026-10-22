@@ -1,0 +1,7 @@
+
+> snipcast@0.36.13 test:changed
+> node scripts/test-changed.mjs --list --native --files tests/capture_text_language_native.py
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 1
+План: Текст захвата: системная раскладка WebView2

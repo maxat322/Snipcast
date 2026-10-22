@@ -1,0 +1,30 @@
+[
+  {
+    "pid": 53416,
+    "hwnd": 1377456,
+    "title": "Snipcast",
+    "visible": false,
+    "minimized": false
+  },
+  {
+    "pid": 53416,
+    "hwnd": 138128,
+    "title": "Быстрая палитра — Snipcast",
+    "visible": false,
+    "minimized": false
+  },
+  {
+    "pid": 53416,
+    "hwnd": 329014,
+    "title": "Snipcast",
+    "visible": false,
+    "minimized": false
+  },
+  {
+    "pid": 53416,
+    "hwnd": 394598,
+    "title": "Настройки — Snipcast",
+    "visible": false,
+    "minimized": false
+  }
+]

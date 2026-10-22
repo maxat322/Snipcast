@@ -1,0 +1,86 @@
+[
+  {
+    "scale": 1,
+    "theme": "dark",
+    "cursorGuides": true,
+    "clearUndoText": true,
+    "editableHistoryAllKinds": true,
+    "physicalRoundTrip": true
+  },
+  {
+    "scale": 1,
+    "theme": "light",
+    "cursorGuides": true,
+    "clearUndoText": true,
+    "editableHistoryAllKinds": true,
+    "physicalRoundTrip": true
+  },
+  {
+    "scale": 1.5,
+    "theme": "dark",
+    "cursorGuides": true,
+    "clearUndoText": true,
+    "editableHistoryAllKinds": true,
+    "physicalRoundTrip": true
+  },
+  {
+    "scale": 1.5,
+    "theme": "light",
+    "cursorGuides": true,
+    "clearUndoText": true,
+    "editableHistoryAllKinds": true,
+    "physicalRoundTrip": true
+  },
+  {
+    "scale": 2,
+    "theme": "dark",
+    "cursorGuides": true,
+    "clearUndoText": true,
+    "editableHistoryAllKinds": true,
+    "physicalRoundTrip": true
+  },
+  {
+    "scale": 2,
+    "theme": "light",
+    "cursorGuides": true,
+    "clearUndoText": true,
+    "editableHistoryAllKinds": true,
+    "physicalRoundTrip": true
+  },
+  {
+    "theme": "dark",
+    "selectedShapeTypeChanges": true,
+    "typeUndoRedo": true,
+    "reselectedShapeType": true,
+    "circleKeepsCenterAndEqualSides": true
+  },
+  {
+    "theme": "light",
+    "selectedShapeTypeChanges": true,
+    "typeUndoRedo": true,
+    "reselectedShapeType": true,
+    "circleKeepsCenterAndEqualSides": true
+  },
+  {
+    "theme": "dark",
+    "textSessionSurvivesSystemFocusChange": true,
+    "outsideClickStillCommits": true
+  },
+  {
+    "theme": "light",
+    "textSessionSurvivesSystemFocusChange": true,
+    "outsideClickStillCommits": true
+  },
+  {
+    "theme": "dark",
+    "panelsYieldTogetherToDrawing": true,
+    "panelsKeepGeometry": true,
+    "releaseAndCancelRestorePanels": true
+  },
+  {
+    "theme": "light",
+    "panelsYieldTogetherToDrawing": true,
+    "panelsKeepGeometry": true,
+    "releaseAndCancelRestorePanels": true
+  }
+]
