@@ -1,0 +1,37 @@
+{
+  "source": {
+    "width": 640,
+    "height": 360,
+    "frames": 66,
+    "bytes": 688312,
+    "worstScenePsnr": 45.452824626886354,
+    "sceneChanges": 5
+  },
+  "hardware": false,
+  "exports": {
+    "small": {
+      "width": 640,
+      "height": 360,
+      "frames": 66,
+      "bytes": 430947,
+      "sourceMse": 769.783073113952,
+      "worstSourcePsnr": 16.494835211975094
+    },
+    "sharp": {
+      "width": 640,
+      "height": 360,
+      "frames": 66,
+      "bytes": 691065,
+      "sourceMse": 596.4857748053453,
+      "worstSourcePsnr": 16.491347708872304
+    },
+    "best": {
+      "width": 640,
+      "height": 360,
+      "frames": 66,
+      "bytes": 2669613,
+      "sourceMse": 0.4438796164772727,
+      "worstSourcePsnr": 49.264207566521954
+    }
+  }
+}

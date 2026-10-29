@@ -1,0 +1,41 @@
+{
+  "base": "0.36.14",
+  "identicalToTestedSources": [
+    {
+      "path": "src/video/VideoApp.tsx",
+      "sha256": "e7796dc5ecb06393b454c9593dc487976c091f45485f8c430922a8de9ef14d2e"
+    },
+    {
+      "path": "src-tauri/src/video.rs",
+      "sha256": "6eca0a0776cf6b530c2fcbde332df940e9398752b8b1ebb8557020c0c69ec785"
+    },
+    {
+      "path": "src-tauri/native/video.c",
+      "sha256": "47300c90c5e1be1715dd64f48983d9a3abd9e60247a4ea75dbdd3b5ddc315eb5"
+    },
+    {
+      "path": "src-tauri/vendor/wcap/wcap_config.h",
+      "sha256": "8a1a676a30ef626c7dc48c52490be252f135044b29b5852a081a4db361e22c89"
+    },
+    {
+      "path": "src-tauri/vendor/wcap/wcap_encoder.h",
+      "sha256": "b1ad1518377d6951ee846e7a01eecf59d4be0dcee1ef19525847910d7caac0fd"
+    },
+    {
+      "path": "tests/video_editor_ui.py",
+      "sha256": "15723b7dc7a45eaa0607a2812d5244e87309487635d7ee72a1a8491be34ee41a"
+    },
+    {
+      "path": "tests/video_quality_native.py",
+      "sha256": "0a84682fa10a10b704583edacab104c32a59623a1c04d8e84d6bb4725d820be9"
+    },
+    {
+      "path": "tests/video_scene_quality.py",
+      "sha256": "6bbd3cd6a4d4f14d58c5a4ea95c84812a7b5a7b9ec74df73aeb9207c9a7d13f7"
+    },
+    {
+      "path": "tests/build_video_quality_dll.py",
+      "sha256": "07573185613499805e34827a524d6be9df392fa8b8c798ef835c8714806bfe53"
+    }
+  ]
+}

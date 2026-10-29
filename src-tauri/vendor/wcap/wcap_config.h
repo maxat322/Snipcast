@@ -45,6 +45,7 @@ typedef struct
 	DWORD VideoMaxHeight;
 	DWORD VideoMaxFramerate;
 	DWORD VideoBitrate;
+	DWORD VideoQuality; // 0: bitrate mode; 1-100: quality-based VBR (Snipcast).
 	// audio
 	BOOL CaptureAudio;
 	BOOL ApplicationLocalAudio;

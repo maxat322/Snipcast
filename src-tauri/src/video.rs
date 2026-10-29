@@ -104,6 +104,7 @@ extern "C" {
         width: u32,
         height: u32,
         bitrate: u32,
+        best: u32,
         gif_width: u32,
         gif_fps: u32,
         cancel: *mut i32,
@@ -147,9 +148,11 @@ fn bitrate(width: u32, height: u32, fps: u32, quality: &str) -> u32 {
     let bpp = match quality {
         "small" => 0.04,
         "sharp" => 0.16,
+        "best" => 0.32,
         _ => 0.08,
     };
-    ((width as f64 * height as f64 * fps as f64 * bpp / 1000.).round() as u32).clamp(300, 20000)
+    let (min, max) = if quality == "best" { (2000, 100000) } else { (300, 20000) };
+    ((width as f64 * height as f64 * fps as f64 * bpp / 1000.).round() as u32).clamp(min, max)
 }
 pub fn start_selection(app: &AppHandle) -> Result<(), String> {
     if !cfg!(target_os = "windows") {
@@ -410,7 +413,9 @@ pub async fn snipcast_video_start(app: AppHandle, options: RecordOptions) -> Res
                     st.width,
                     st.height,
                     st.fps,
-                    bitrate(st.width, st.height, st.fps, "small"),
+                    // Preserve detail in the source: export cannot recover pixels
+                    // already lost to the compact recording bitrate.
+                    bitrate(st.width, st.height, st.fps, "best"),
                     u32::from(st.audio),
                     worker.control.as_ptr(),
                     recording_progress,
@@ -504,7 +509,7 @@ fn validate_export(st: &VideoStatus, o: &ExportOptions) -> Result<(), String> {
         return Err("Проверьте границы фрагмента и область обрезки".into());
     }
     if !["mp4", "gif"].contains(&o.format.as_str())
-        || !["small", "balanced", "sharp"].contains(&o.quality.as_str())
+        || !["small", "balanced", "sharp", "best"].contains(&o.quality.as_str())
         || ![480, 640, 800, 960].contains(&o.gif_width)
         || ![10, 15].contains(&o.gif_fps)
     {
@@ -576,6 +581,7 @@ pub async fn snipcast_video_export(
                     options.width & !1,
                     options.height & !1,
                     bitrate(options.width, options.height, st.fps, &options.quality),
+                    u32::from(options.quality == "best"),
                     if options.format == "gif" {
                         options.gif_width
                     } else {
@@ -751,5 +757,10 @@ mod tests {
     fn size_settings() {
         assert!(bitrate(1280, 720, 30, "small") < bitrate(1280, 720, 30, "balanced"));
         assert!(bitrate(1280, 720, 30, "balanced") < bitrate(1280, 720, 30, "sharp"));
+        assert!(bitrate(1280, 720, 30, "sharp") < bitrate(1280, 720, 30, "best"));
+        assert_eq!(bitrate(1920, 1080, 30, "best"), 19907);
+        assert_eq!(bitrate(3840, 2160, 30, "best"), 79626);
+        assert_eq!(bitrate(7680, 4320, 30, "best"), 100000);
+        assert_eq!(bitrate(16, 16, 15, "best"), 2000);
     }
 }

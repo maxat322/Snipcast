@@ -1,0 +1,32 @@
+{
+  "source": {
+    "width": 640,
+    "height": 360,
+    "frames": 77,
+    "bytes": 503124
+  },
+  "hardware": false,
+  "exports": {
+    "small": {
+      "width": 640,
+      "height": 360,
+      "frames": 77,
+      "bytes": 787603,
+      "sourceMse": 2488.9014583333333
+    },
+    "sharp": {
+      "width": 640,
+      "height": 360,
+      "frames": 77,
+      "bytes": 1442542,
+      "sourceMse": 1733.2733029513888
+    },
+    "best": {
+      "width": 640,
+      "height": 360,
+      "frames": 77,
+      "bytes": 2952301,
+      "sourceMse": 273.855234375
+    }
+  }
+}

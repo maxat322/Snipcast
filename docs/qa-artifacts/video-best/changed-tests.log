@@ -1,0 +1,20 @@
+
+> snipcast@0.36.14 test:changed
+> node scripts/test-changed.mjs --files src/video/VideoApp.tsx src-tauri/src/video.rs tests/video_editor_ui.py tests/video_quality_native.py
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 2
+Проверка: Видео: только интерфейс редактора
+{"bestQualitySelectionAndExport": true, "qualityKeyboardNavigation": true, "qualitySurvivesFormatSwitch": true, "sizeEstimateUpdates": true, "hoverDelay": true, "menuTransition": true, "noExportOnHover": true, "leaveCloses": true, "normalClick": true, "disabledButton": true, "trimPointerAndCursor": true, "oneClickOneExport": true}
+Проверка: Rust: video::tests
+    Blocking waiting for file lock on build directory
+   Compiling snipcast v0.36.14 (C:\Users\designer\Desktop\Dev\Snipcast\src-tauri)
+    Finished `release` profile [optimized] target(s) in 2m 54s
+     Running unittests src\lib.rs (src-tauri\target\release\deps\snipcast_lib-0cbd0d5e16c9f1bb.exe)
+
+running 3 tests
+test video::tests::invalid_ranges ... ok
+test video::tests::size_settings ... ok
+test video::tests::valid_ranges ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 51 filtered out; finished in 0.00s

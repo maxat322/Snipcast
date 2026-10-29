@@ -1,0 +1,14 @@
+{
+  "bestQualitySelectionAndExport": true,
+  "qualityKeyboardNavigation": true,
+  "qualitySurvivesFormatSwitch": true,
+  "sizeEstimateUpdates": true,
+  "hoverDelay": true,
+  "menuTransition": true,
+  "noExportOnHover": true,
+  "leaveCloses": true,
+  "normalClick": true,
+  "disabledButton": true,
+  "trimPointerAndCursor": true,
+  "oneClickOneExport": true
+}

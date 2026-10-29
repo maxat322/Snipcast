@@ -1,0 +1,8 @@
+
+> snipcast@0.36.14 tauri
+> tauri build --no-bundle --config .qa-work/video-best/tauri-qa.json
+
+        Info Looking up installed tauri packages to check mismatched versions...
+   Compiling snipcast v0.36.14 (C:\Users\designer\Desktop\Dev\Snipcast\src-tauri)
+    Finished `release` profile [optimized] target(s) in 1m 10s
+       Built application at: C:\Users\designer\Desktop\Dev\Snipcast\src-tauri\target\release\snipcast.exe

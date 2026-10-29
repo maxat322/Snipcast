@@ -502,7 +502,22 @@ BOOL Encoder_Start(Encoder* Encoder, ID3D11Device* Device, LPWSTR FileName, cons
 		HR(IMFMediaType_SetUINT64(Type, &MF_MT_FRAME_RATE, MFT64(Config->FramerateNum, Config->FramerateDen)));
 		HR(IMFMediaType_SetUINT64(Type, &MF_MT_FRAME_SIZE, MFT64(OutputWidth, OutputHeight)));
 
-		hr = IMFSinkWriter_SetInputMediaType(Writer, Encoder->VideoStreamIndex, Type, NULL);
+		IMFAttributes* EncodingParameters = NULL;
+		if (Config->Config->VideoQuality)
+		{
+			// Apply before the sink writer configures the encoder's output type.
+			// Late ICodecAPI setters may report success without replacing its
+			// initial bitrate-control configuration.
+			HR(MFCreateAttributes(&EncodingParameters, 3));
+			HR(IMFAttributes_SetUINT32(EncodingParameters, &CODECAPI_AVEncCommonRateControlMode, eAVEncCommonRateControlMode_Quality));
+			HR(IMFAttributes_SetUINT32(EncodingParameters, &CODECAPI_AVEncCommonQuality, Config->Config->VideoQuality));
+			HR(IMFAttributes_SetUINT32(EncodingParameters, &CODECAPI_AVEncMPVGOPSize, MUL_DIV_ROUND_UP(1, Config->FramerateNum, Config->FramerateDen)));
+		}
+		hr = IMFSinkWriter_SetInputMediaType(Writer, Encoder->VideoStreamIndex, Type, EncodingParameters);
+		if (EncodingParameters)
+		{
+			IMFAttributes_Release(EncodingParameters);
+		}
 		IMFMediaType_Release(Type);
 
 		if (FAILED(hr))
@@ -517,16 +532,27 @@ BOOL Encoder_Start(Encoder* Encoder, ID3D11Device* Device, LPWSTR FileName, cons
 		ICodecAPI* Codec;
 		HR(IMFSinkWriter_GetServiceForStream(Writer, 0, &GUID_NULL, &IID_ICodecAPI, (LPVOID*)&Codec));
 
-		// VBR rate control
-		VARIANT RateControl = { .vt = VT_UI4, .ulVal = eAVEncCommonRateControlMode_UnconstrainedVBR };
-		ICodecAPI_SetValue(Codec, &CODECAPI_AVEncCommonRateControlMode, &RateControl);
+		// A bitrate target can spend its budget on a scene cut and then raise
+		// quantization severely for subsequent frames. Preserve quality instead
+		// for Snipcast's source recording and "Best" export profile.
+		BOOL QualityMode = Config->Config->VideoQuality != 0;
+		if (!QualityMode)
+		{
+			VARIANT RateControl = { .vt = VT_UI4, .ulVal = eAVEncCommonRateControlMode_UnconstrainedVBR };
+			ICodecAPI_SetValue(Codec, &CODECAPI_AVEncCommonRateControlMode, &RateControl);
+		}
+		if (QualityMode)
+			fprintf(stderr, "[snipcast] video encoder: quality VBR, quality=%lu\n", Config->Config->VideoQuality);
 
-		// VBR bitrate to use, some MFT encoders override MF_MT_AVG_BITRATE setting with this one
-		VARIANT Bitrate = { .vt = VT_UI4, .ulVal = Config->Config->VideoBitrate * 1000 };
-		ICodecAPI_SetValue(Codec, &CODECAPI_AVEncCommonMeanBitRate, &Bitrate);
+		// Other profiles keep their original bitrate-based compression.
+		if (!QualityMode)
+		{
+			VARIANT Bitrate = { .vt = VT_UI4, .ulVal = Config->Config->VideoBitrate * 1000 };
+			ICodecAPI_SetValue(Codec, &CODECAPI_AVEncCommonMeanBitRate, &Bitrate);
+		}
 
-		// set GOP size to 4 seconds
-		VARIANT GopSize = { .vt = VT_UI4, .ulVal = MUL_DIV_ROUND_UP(4, Config->FramerateNum, Config->FramerateDen) };
+		// Refresh reference frames every second for quality-first recording.
+		VARIANT GopSize = { .vt = VT_UI4, .ulVal = MUL_DIV_ROUND_UP(QualityMode ? 1 : 4, Config->FramerateNum, Config->FramerateDen) };
 		ICodecAPI_SetValue(Codec, &CODECAPI_AVEncMPVGOPSize, &GopSize);
 
 		// disable low latency, for higher quality & better performance

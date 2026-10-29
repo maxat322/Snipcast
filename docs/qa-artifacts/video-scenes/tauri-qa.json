@@ -1,0 +1,47 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Snipcast",
+        "width": 728,
+        "height": 400,
+        "minWidth": 624,
+        "minHeight": 320,
+        "resizable": true,
+        "visible": false,
+        "decorations": false,
+        "transparent": false,
+        "shadow": true,
+        "backgroundColor": "#1b1b1f",
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "center": true,
+        "focus": true
+      },
+      {
+        "label": "settings",
+        "url": "index.html?snipcast=settings",
+        "title": "Настройки — Snipcast",
+        "width": 880,
+        "height": 640,
+        "minWidth": 720,
+        "minHeight": 480,
+        "resizable": true,
+        "visible": false,
+        "decorations": true,
+        "transparent": false,
+        "shadow": true,
+        "backgroundColor": "#1b1b1f",
+        "alwaysOnTop": true,
+        "skipTaskbar": false,
+        "center": true,
+        "focus": true
+      }
+    ]
+  },
+  "identifier": "com.snipcast.video-scenes-qa",
+  "build": {
+    "beforeBuildCommand": ""
+  }
+}

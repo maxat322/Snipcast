@@ -1,0 +1,30 @@
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizePassH.dxbc
+Compressed 1 items totalling 2004 bytes to 739 bytes, 2.71x compression
+compilation header save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizePassH.h
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizePassH.dcs
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizePassV.dxbc
+Compressed 1 items totalling 2004 bytes to 751 bytes, 2.67x compression
+compilation header save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizePassV.h
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizePassV.dcs
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizeLinearPassH.dxbc
+Compressed 1 items totalling 2260 bytes to 801 bytes, 2.82x compression
+compilation header save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizeLinearPassH.h
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizeLinearPassH.dcs
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizeLinearPassV.dxbc
+Compressed 1 items totalling 2260 bytes to 819 bytes, 2.76x compression
+compilation header save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizeLinearPassV.h
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ResizeLinearPassV.dcs
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ConvertSinglePass.dxbc
+Compressed 1 items totalling 1352 bytes to 551 bytes, 2.45x compression
+compilation header save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ConvertSinglePass.h
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ConvertSinglePass.dcs
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ConvertPass1.dxbc
+Compressed 1 items totalling 652 bytes to 407 bytes, 1.60x compression
+compilation header save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ConvertPass1.h
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ConvertPass1.dcs
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ConvertPass2.dxbc
+Compressed 1 items totalling 1100 bytes to 535 bytes, 2.06x compression
+compilation header save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ConvertPass2.h
+compilation object save succeeded; see C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\shaders\ConvertPass2.dcs
+video.c
+   Создается библиотека C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\video.lib и объект C:\Users\designer\Desktop\Dev\Snipcast\.qa-work\video-scenes\verified\video.exp

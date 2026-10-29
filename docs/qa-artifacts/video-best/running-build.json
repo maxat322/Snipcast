@@ -1,0 +1,10 @@
+{
+  "Pid": 49104,
+  "Path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist-release\\snipcast.exe",
+  "Version": "0.36.14",
+  "Sha256": "45770439C32E0C3CC57D5B58152852F7ED8EAE0D89D2E200C6DB9E849154FD2B",
+  "InstalledCopyMatches": true,
+  "NoSnipcastWindowsBeforeRestart": true,
+  "GracefulCloseAvailable": true,
+  "StoppedOnlyVerifiedIdleProcess": true
+}

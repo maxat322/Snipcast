@@ -88,9 +88,9 @@ static HRESULT create_device(ID3D11Device** device) {
     return D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
         (D3D_FEATURE_LEVEL[]){D3D_FEATURE_LEVEL_11_0}, 1, D3D11_SDK_VERSION, device, NULL, NULL);
 }
-static Config encoding_config(uint32_t bitrate) {
+static Config encoding_config(uint32_t bitrate,BOOL best) {
     return (Config){.MouseCursor=TRUE, .HardwareEncoder=TRUE, .VideoCodec=CONFIG_VIDEO_H264,
-        .VideoProfile=CONFIG_VIDEO_MAIN, .VideoBitrate=bitrate, .AudioCodec=CONFIG_AUDIO_AAC,
+        .VideoProfile=CONFIG_VIDEO_MAIN, .VideoBitrate=bitrate, .VideoQuality=best?100:0, .AudioCodec=CONFIG_AUDIO_AAC,
         .AudioSamplerate=48000, .AudioChannels=2, .AudioBitrate=96};
 }
 static BOOL start_encoder(Encoder* e, ID3D11Device* d, WCHAR* path, EncoderConfig* cfg, BOOL* hardware) {
@@ -134,7 +134,7 @@ int32_t snipcast_video_record(WCHAR* path,int32_t x,int32_t y,uint32_t width,uin
     uint32_t fps,uint32_t bitrate,uint32_t audio,volatile LONG* control,RecordProgress progress,void* user) {
     HRESULT hr=CoInitializeEx(NULL,COINIT_APARTMENTTHREADED);
     if(FAILED(hr)) return hr;
-    Recording r={.control=control}; Config cfg=encoding_config(bitrate);KeyboardHook keyboard={0};
+    Recording r={.control=control}; Config cfg=encoding_config(bitrate,TRUE);KeyboardHook keyboard={0};
     LARGE_INTEGER frequency; QueryPerformanceFrequency(&frequency); r.frequency=frequency.QuadPart;
     BOOL capture_created=FALSE, capture_started=FALSE, audio_started=FALSE, encoder_started=FALSE;
     if(!ScreenCapture_IsSupported()) {hr=HRESULT_FROM_WIN32(ERROR_OLD_WIN_VERSION);goto done;}
@@ -334,7 +334,7 @@ static HRESULT copy_video_pixels(IMFSample* sample,BYTE* pixels,UINT width,UINT 
 }
 
 int32_t snipcast_video_export(const WCHAR* source,WCHAR* target,uint64_t start_ms,uint64_t end_ms,
-    uint32_t cx,uint32_t cy,uint32_t cw,uint32_t ch,uint32_t bitrate,uint32_t gif_width,uint32_t gif_fps,
+    uint32_t cx,uint32_t cy,uint32_t cw,uint32_t ch,uint32_t bitrate,uint32_t best,uint32_t gif_width,uint32_t gif_fps,
     volatile LONG* cancel,ExportProgress progress,void* user) {
     HRESULT hr=CoInitializeEx(NULL,COINIT_MULTITHREADED);if(FAILED(hr))return hr;
     IMFSourceReader* reader=NULL;IMFMediaType* type=NULL;IMFSample* sample=NULL;
@@ -362,7 +362,7 @@ int32_t snipcast_video_export(const WCHAR* source,WCHAR* target,uint64_t start_m
         TRY(create_device(&device));ID3D11Device_GetImmediateContext(device,&context);
         D3D11_TEXTURE2D_DESC desc={.Width=info.width,.Height=info.height,.MipLevels=1,.ArraySize=1,.Format=DXGI_FORMAT_B8G8R8A8_UNORM,
             .SampleDesc={1,0},.Usage=D3D11_USAGE_DEFAULT,.BindFlags=D3D11_BIND_SHADER_RESOURCE};
-        TRY(ID3D11Device_CreateTexture2D(device,&desc,NULL,&texture));Config cfg=encoding_config(bitrate);
+        TRY(ID3D11Device_CreateTexture2D(device,&desc,NULL,&texture));Config cfg=encoding_config(bitrate,best!=0);
         EncoderConfig ec={cw,ch,max(1,info.fps),1,audio!=UINT32_MAX?&wave:NULL,&cfg};
         if(!start_encoder(&encoder,device,target,&ec,&hardware)){hr=MF_E_TOPO_CODEC_NOT_FOUND;goto done;}encoded=TRUE;
     }

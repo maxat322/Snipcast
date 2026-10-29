@@ -1,0 +1,19 @@
+
+> snipcast@0.36.14 test:changed
+> node scripts/test-changed.mjs --files src-tauri/vendor/wcap/wcap_config.h src-tauri/vendor/wcap/wcap_encoder.h src-tauri/native/video.c src-tauri/src/video.rs src/video/VideoApp.tsx tests/video_scene_quality.py tests/video_quality_native.py tests/video_editor_ui.py tests/build_video_quality_dll.py
+
+База сравнения: явно перечисленные файлы
+Выбрано проверок: 2
+Проверка: Rust: video::tests
+    Finished `release` profile [optimized] target(s) in 0.51s
+     Running unittests src\lib.rs (src-tauri\target\release\deps\snipcast_lib-0cbd0d5e16c9f1bb.exe)
+
+running 3 tests
+test video::tests::invalid_ranges ... ok
+test video::tests::size_settings ... ok
+test video::tests::valid_ranges ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 51 filtered out; finished in 0.00s
+
+Проверка: Видео: только интерфейс редактора
+{"bestQualitySelectionAndExport": true, "qualityKeyboardNavigation": true, "qualitySurvivesFormatSwitch": true, "sizeEstimateUpdates": true, "hoverDelay": true, "menuTransition": true, "noExportOnHover": true, "leaveCloses": true, "normalClick": true, "disabledButton": true, "trimPointerAndCursor": true, "oneClickOneExport": true}

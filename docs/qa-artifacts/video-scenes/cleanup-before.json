@@ -1,0 +1,47 @@
+[
+  {
+    "Path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\src-tauri\\target",
+    "Bytes": 2297468869,
+    "ReparsePoints": 0
+  },
+  {
+    "Path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\.qa-work\\video-scenes",
+    "Bytes": 201485859,
+    "ReparsePoints": 0
+  },
+  {
+    "Path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\.qa-work\\video-best-native",
+    "Bytes": 5023838,
+    "ReparsePoints": 0
+  },
+  {
+    "Path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\.qa-work\\video-editor-ui",
+    "Bytes": 24900,
+    "ReparsePoints": 0
+  },
+  {
+    "Path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\.qa-work\\video-best",
+    "Bytes": 18185758,
+    "ReparsePoints": 0
+  },
+  {
+    "Path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\node_modules\\.vite",
+    "Bytes": 3010992,
+    "ReparsePoints": 0
+  },
+  {
+    "Path": "C:\\Users\\designer\\Desktop\\Dev\\Snipcast\\dist",
+    "Bytes": 530049,
+    "ReparsePoints": 0
+  },
+  {
+    "Path": "C:\\Users\\designer\\AppData\\Local\\com.snipcast.video-scenes-qa",
+    "Bytes": 9888959,
+    "ReparsePoints": 0
+  },
+  {
+    "Path": "C:\\Users\\designer\\AppData\\Local\\com.snipcast.video-quality-qa",
+    "Bytes": 9660902,
+    "ReparsePoints": 0
+  }
+]

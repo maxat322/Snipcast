@@ -18,6 +18,17 @@ with sync_playwright() as p:
   page.on('pageerror',lambda error:errors.append(str(error)))
   page.add_init_script(f'({BRIDGE})({json.dumps(clip)})');page.goto('http://127.0.0.1:1420/?snipcast=video-editor')
   save=page.locator('.video-save');expect(save).to_be_enabled();page.wait_for_function('document.querySelector("video").readyState>=2')
+  quality=page.get_by_role('combobox',name='Качество видео');expect(quality).to_contain_text('Компактно')
+  compact_size=page.locator('.video-export__size').inner_text()
+  quality.click();expect(page.get_by_role('option')).to_have_count(4)
+  page.get_by_role('option',name='Лучшее',exact=True).click();expect(quality).to_contain_text('Лучшее')
+  assert page.locator('.video-export__size').inner_text()!=compact_size
+  expect(page.locator('.video-export__size')).to_have_text('Размер зависит от видео')
+  page.locator('.video-format button').nth(1).click();expect(quality).to_have_count(0)
+  page.locator('.video-format button').nth(0).click();expect(quality).to_contain_text('Лучшее')
+  quality.press('Enter');quality.press('Home');quality.press('Enter');expect(quality).to_contain_text('Компактно')
+  quality.press('Enter');quality.press('End');quality.press('Enter');expect(quality).to_contain_text('Лучшее')
+  page.screenshot(path=str(OUT/'best-quality.png'))
   save.hover();page.wait_for_timeout(300);expect(page.locator('.video-quick')).to_be_visible()
   page.get_by_role('menuitem').hover();page.wait_for_timeout(200);expect(page.locator('.video-quick')).to_be_visible()
   assert not page.evaluate('qa.calls.some(c=>c.command==="snipcast_video_export")')
@@ -36,7 +47,8 @@ with sync_playwright() as p:
   save.hover();page.wait_for_timeout(300);page.get_by_role('menuitem').click()
   page.wait_for_function('qa.calls.some(c=>c.command==="snipcast_video_export")')
   assert page.evaluate('qa.calls.filter(c=>c.command==="snipcast_video_export").length')==1
+  assert page.evaluate('qa.calls.find(c=>c.command==="snipcast_video_export").args.options.quality')=='best'
   assert not errors,errors
   browser.close()
-result={'hoverDelay':True,'menuTransition':True,'noExportOnHover':True,'leaveCloses':True,'normalClick':True,'disabledButton':True,'trimPointerAndCursor':True,'oneClickOneExport':True}
+result={'bestQualitySelectionAndExport':True,'qualityKeyboardNavigation':True,'qualitySurvivesFormatSwitch':True,'sizeEstimateUpdates':True,'hoverDelay':True,'menuTransition':True,'noExportOnHover':True,'leaveCloses':True,'normalClick':True,'disabledButton':True,'trimPointerAndCursor':True,'oneClickOneExport':True}
 (OUT/'results.json').write_text(json.dumps(result,indent=2),encoding='utf-8');print(json.dumps(result))
