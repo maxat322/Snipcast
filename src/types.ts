@@ -47,12 +47,15 @@ export type ScreenshotPreset = {
 };
 
 export type AppConfig = {
+  commands?: import("./commands/model").CommandsConfig;
   textSuggestions?: TextSuggestionsConfig;
   paletteHotkey: string;
+  paletteHotkeySecondary?: string;
   autostart: boolean;
   theme: UiThemeSetting;
   paletteListDensity: PaletteListDensity;
   screenshotHotkey: string;
+  screenshotHotkeySecondary?: string;
   screenshotSaveHotkey?:string;
   screenshotPinHotkey?:string;
   screenshotCopyHotkey?:string;

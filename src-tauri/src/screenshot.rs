@@ -1,7 +1,7 @@
 //! Снимки экрана: захват мониторов, оверлеи выделения, закреплённые снимки.
 //!
 //! Схема работы:
-//! 1. `start_capture` прячет палитру, ждёт ~120 мс (чтобы палитра исчезла с экрана),
+//! 1. `start_capture` сохраняет открытые палитры видимыми,
 //!    снимает виртуальный рабочий стол в физических пикселях и пишет временный PNG.
 //! 2. Единое безрамочное always-on-top окно `capture-0` покрывает все мониторы
 //!    (фронтенд рисует снимок + выделение области + панель инструментов).
@@ -21,6 +21,9 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
 use crate::data::AppConfig;
+
+#[path = "capture_cursor.rs"]
+pub mod capture_cursor;
 
 const MAIN_WINDOW_LABEL: &str = "main";
 
@@ -75,6 +78,7 @@ pub struct PresetOverride {
 
 #[derive(Default)]
 pub struct ScreenshotState {
+    pub cursor_image: Option<capture_cursor::Snapshot>,
     pub preparing: bool,
     pub monitors: Vec<ScreenMonitor>,
     pub selected_pin: Option<String>,
@@ -108,6 +112,7 @@ pub struct ScreenshotState {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureInfoDto {
+    pub cursor_image: Option<capture_cursor::Snapshot>,
     pub video_selection: bool,
     pub session_id: String,
     pub monitors: Vec<ScreenMonitor>,
@@ -401,7 +406,7 @@ pub(crate) fn capture_image(x: i32, y: i32, _width: u32, _height: u32) -> Result
     Err(format!("монитор ({x},{y}) не найден среди дисплеев"))
 }
 
-/// Запустить сессию захвата: спрятать палитру, снять мониторы, показать оверлеи.
+/// Запустить сессию захвата: снять видимый рабочий стол, затем показать оверлеи.
 /// `preset` — пресет быстрого скриншота (подменяет сохранение и действие).
 pub fn start_capture(app: &AppHandle, preset: Option<PresetOverride>) -> Result<(), String> {
     let preset_label = preset.as_ref().map(|p| p.title.clone()).unwrap_or_else(|| "-".to_string());
@@ -436,20 +441,19 @@ fn start_capture_inner(app: &AppHandle, preset: Option<PresetOverride>) -> Resul
     }
     let _preparation=CapturePreparation(app.clone());
 
-    // Палитра always-on-top: прячем и даём композитору время убрать её с экрана.
+    // Open palettes belong in the captured desktop. No hide transition may start here.
+    // Blur handlers also preserve them while capture preparation/overlays are active.
     crate::updater::suspend_notice(app);
-    if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        let _ = w.hide();
-    }
-    std::thread::sleep(Duration::from_millis(120));
 
     let mons = monitors_list(app)?;
     let (detection, elements) = crate::capture_detection::collect();
     let mut captures = Vec::new();
     let (vx,vy,vw,vh) = virtual_screen_rect(app)?;
+    let cursor_image;
     {
         let mut img = capture_image(vx, vy, vw, vh)?;
         clear_monitor_gaps(&mut img,vx,vy,&mons);
+        cursor_image = capture_cursor::capture(&img, vx, vy);
         let file = write_png_temp(CAPTURE_PREFIX, &img)?;
         captures.push(MonitorCapture {
             label: format!("{CAPTURE_PREFIX}0"),
@@ -463,6 +467,7 @@ fn start_capture_inner(app: &AppHandle, preset: Option<PresetOverride>) -> Resul
         let state = app.state::<Mutex<ScreenshotState>>();
         let mut st = state.lock().map_err(|e| e.to_string())?;
         st.captures = captures.clone();
+        st.cursor_image = cursor_image;
         st.monitors = mons.iter().map(|m| ScreenMonitor{x:m.x,y:m.y,width:m.w,height:m.h,scale:m.scale}).collect();
         st.detection = detection;
         st.active_preset = preset;
@@ -602,6 +607,9 @@ fn create_capture_window(app: &AppHandle, c: &MonitorCapture) -> Result<(), Stri
         .shadow(false)
         .visible(false);
 
+    #[cfg(feature = "inline-qa")]
+    let builder = builder.data_directory(crate::data::snipcast_base_dir().join("webview"));
+
     #[cfg(target_os = "macos")]
     let builder = builder.accept_first_mouse(true);
 
@@ -641,6 +649,7 @@ pub fn close_capture(app: &AppHandle) {
         let _ = std::fs::remove_file(&c.file);
     }
     st.active_preset = None;
+    st.cursor_image = None;
     st.detection = crate::capture_detection::Snapshot::default();
     st.ready_overlays.clear();
     st.session_shown = false;
@@ -1420,6 +1429,7 @@ pub fn capture_info_for_label(app: &AppHandle, label: &str) -> Result<CaptureInf
         .map(|f| f.to_string_lossy().into_owned())
         .unwrap_or_default();
     Ok(CaptureInfoDto {
+        cursor_image: st.cursor_image.clone(),
         video_selection: crate::video::is_selecting(app),
         session_id: name.clone(),
         monitors: st.monitors.clone(),
@@ -1576,7 +1586,12 @@ pub(crate) fn write_image(img: &image::RgbaImage, path: &Path, format: &str, qua
 }
 
 /// Кроп из исходного (чистого, без аннотаций) снимка монитора для OCR.
-pub fn crop_from_capture(app: &AppHandle, label: &str, x: u32, y: u32, w: u32, h: u32) -> Result<Vec<u8>, String> {
+pub fn crop_from_capture(app: &AppHandle, label: &str, history_id: Option<&str>, x: u32, y: u32, w: u32, h: u32) -> Result<Vec<u8>, String> {
+    if let Some(id) = history_id {
+        let (_, bytes) = crate::capture_history::image(id)?;
+        let img = image::load_from_memory(&bytes).map_err(|e| format!("чтение снимка: {e}"))?.to_rgba8();
+        return crop_ocr_image(&img, x, y, w, h);
+    }
     let file = {
         let state = app.state::<Mutex<ScreenshotState>>();
         let st = state.lock().map_err(|e| e.to_string())?;
@@ -1590,12 +1605,17 @@ pub fn crop_from_capture(app: &AppHandle, label: &str, x: u32, y: u32, w: u32, h
     let img = image::open(&file)
         .map_err(|e| format!("чтение снимка: {e}"))?
         .to_rgba8();
+    crop_ocr_image(&img, x, y, w, h)
+}
+
+fn crop_ocr_image(img: &image::RgbaImage, x: u32, y: u32, w: u32, h: u32) -> Result<Vec<u8>, String> {
     let (iw, ih) = (img.width(), img.height());
-    let x = x.min(iw);
-    let y = y.min(ih);
-    let w = w.min(iw.saturating_sub(x)).max(1);
-    let h = h.min(ih.saturating_sub(y)).max(1);
-    let crop = image::imageops::crop_imm(&img, x, y, w, h).to_image();
+    if x >= iw || y >= ih || w == 0 || h == 0 {
+        return Err("Область распознавания вне исходного снимка".into());
+    }
+    let w = w.min(iw - x);
+    let h = h.min(ih - y);
+    let crop = image::imageops::crop_imm(img, x, y, w, h).to_image();
     Ok(encode_png(&crop))
 }
 
@@ -1823,6 +1843,20 @@ pub fn finalize_job(
 #[cfg(test)]
 mod capture_tests {
     use super::*;
+    #[test]
+    fn ocr_crop_preserves_source_pixels_and_rejects_empty_bounds() {
+        let img=image::RgbaImage::from_fn(10,8,|x,y|image::Rgba([x as u8,y as u8,42,255]));
+        let png=crop_ocr_image(&img,3,2,4,3).unwrap();
+        let cropped=image::load_from_memory(&png).unwrap().to_rgba8();
+        assert_eq!(cropped.dimensions(),(4,3));
+        assert_eq!(cropped.get_pixel(0,0),img.get_pixel(3,2));
+        assert_eq!(cropped.get_pixel(3,2),img.get_pixel(6,4));
+        let edge=image::load_from_memory(&crop_ocr_image(&img,9,7,4,3).unwrap()).unwrap();
+        assert_eq!((edge.width(),edge.height()),(1,1));
+        for (x,y,w,h) in [(10,0,1,1),(0,8,1,1),(0,0,0,1),(0,0,1,0)] {
+            assert!(crop_ocr_image(&img,x,y,w,h).is_err());
+        }
+    }
     #[test]
     fn virtual_desktop_negative_origin_and_gaps() {
         let mons=[MonRect{x:-6,y:-2,w:3,h:4,scale:1.0},MonRect{x:-1,y:0,w:3,h:2,scale:2.0}];

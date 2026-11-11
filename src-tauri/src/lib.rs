@@ -1,4 +1,5 @@
-mod ai;
+﻿mod ai;
+mod commands;
 mod capture_detection;
 mod api;
 pub mod data;
@@ -13,6 +14,7 @@ mod updater;
 mod video;
 mod capture_history;
 mod capture_keyboard;
+mod mouse_hotkeys;
 mod text_suggestions;
 #[cfg(target_os = "windows")]
 mod suggestions_windows;
@@ -26,20 +28,19 @@ mod macos_window;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
-use std::str::FromStr;
 use std::time::Duration;
 
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    Manager, State,
+    Emitter, Manager, State,
 };
 
 use paste_target::PasteTarget;
 
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{
-    Builder as ShortcutPluginBuilder, GlobalShortcutExt, Shortcut, ShortcutState,
+    Builder as ShortcutPluginBuilder, GlobalShortcutExt, ShortcutState,
 };
 use tauri_plugin_notification::NotificationExt;
 
@@ -215,6 +216,7 @@ fn apply_preset_hotkeys(app: &tauri::AppHandle, cfg: &data::AppConfig) -> Result
         if h.is_empty() {
             continue;
         }
+        if mouse_hotkeys::is_mouse(h) {continue;}
         let pid = p.id.clone();
         let title = p.title.clone();
         let res = gs.on_shortcut(h, move |app, _sc, e| {
@@ -277,7 +279,16 @@ fn start_capture_notify(app: &tauri::AppHandle, preset: Option<screenshot::Prese
 
 fn show_palette(app: &tauri::AppHandle) {
     refresh_paste_target(app);
-
+    commands::hide(app);
+    let _ = app.emit_to(MAIN_WINDOW_LABEL, "snipcast://palette-open", ());
+    show_palette_window(app);
+}
+#[tauri::command]
+fn snipcast_unified_palette_state() -> bool {
+    // Compatibility for callers from the experimental release. There is one main palette.
+    true
+}
+fn show_palette_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = w.center();
         let _ = w.show();
@@ -293,6 +304,14 @@ pub(crate) fn hide_palette(app: &tauri::AppHandle) {
     }
 }
 
+/// A capture overlay takes focus; that must not fade a palette out of the shot.
+#[tauri::command]
+fn snipcast_palette_blur(app:tauri::AppHandle,window:tauri::WebviewWindow)->Result<(),String> {
+    if ![MAIN_WINDOW_LABEL,commands::WINDOW].contains(&window.label()){return Err("Не окно палитры".into())}
+    if !screenshot::capture_active(&app)&&!window.is_focused().map_err(|e|e.to_string())?{window.hide().map_err(|e|e.to_string())?;}
+    Ok(())
+}
+
 fn apply_palette_hotkey(app: &tauri::AppHandle, previous: Option<&str>, next: &str) -> Result<(), String> {
     let next = next.trim();
     let gs = app.global_shortcut();
@@ -306,7 +325,8 @@ fn apply_palette_hotkey(app: &tauri::AppHandle, previous: Option<&str>, next: &s
     if next.is_empty() {
         return Ok(());
     }
-    Shortcut::from_str(next).map_err(|e| e.to_string())?;
+    mouse_hotkeys::parse(next).map_err(|e| e.to_string())?;
+    if mouse_hotkeys::is_mouse(next) { return Ok(()); }
     gs.on_shortcut(next, |app, _, e| {
         if e.state == ShortcutState::Pressed {
             show_palette(app);
@@ -330,7 +350,8 @@ fn apply_screenshot_hotkey(app: &tauri::AppHandle, previous: Option<&str>, next:
     if next.is_empty() {
         return Ok(());
     }
-    Shortcut::from_str(next).map_err(|e| e.to_string())?;
+    mouse_hotkeys::parse(next).map_err(|e| e.to_string())?;
+    if mouse_hotkeys::is_mouse(next) { return Ok(()); }
     gs.on_shortcut(next, |app, _, e| {
         if e.state == ShortcutState::Pressed {
             if let Err(err) = start_capture_notify(app, None) {
@@ -380,7 +401,10 @@ fn snipcast_save_config(
     skip_palette_hotkey_apply: Option<bool>,
 ) -> Result<(), String> {
     let skip_hotkey = skip_palette_hotkey_apply.unwrap_or(false);
+    let mut incoming = incoming;
+    data::migrate_main_palette(&mut incoming);
     text_suggestions::validate(&incoming)?;
+    commands::validate(&incoming)?;
     let mut cfg = state.lock().map_err(|e| e.to_string())?;
     let prev_hotkey = cfg.palette_hotkey.clone();
     let hotkey_changed = prev_hotkey.trim() != incoming.palette_hotkey.trim();
@@ -391,10 +415,11 @@ fn snipcast_save_config(
 
     // Комбинации проверяем только когда их реально меняли: неверный хоткей
     // не должен мешать сохранить тему, автозапуск и остальные настройки.
-    let mut incoming = incoming;
+    validate_preset_hotkeys(&incoming)?;
     validate_capture_action_hotkeys(&incoming)?;
+    mouse_hotkeys::validate(&incoming)?;
     if hotkey_changed && !incoming.palette_hotkey.trim().is_empty() {
-        if let Err(e) = Shortcut::from_str(incoming.palette_hotkey.trim()) {
+        if let Err(e) = mouse_hotkeys::parse(incoming.palette_hotkey.trim()) {
             // Оставляем прежнюю рабочую комбинацию, всё остальное сохраняем.
             incoming.palette_hotkey = prev_hotkey;
             *cfg = incoming;
@@ -403,7 +428,7 @@ fn snipcast_save_config(
         }
     }
     if shot_hotkey_changed && !incoming.screenshot_hotkey.trim().is_empty() {
-        if let Err(e) = Shortcut::from_str(incoming.screenshot_hotkey.trim()) {
+        if let Err(e) = mouse_hotkeys::parse(incoming.screenshot_hotkey.trim()) {
             incoming.screenshot_hotkey = prev_shot_hotkey;
             *cfg = incoming;
             data::save_config(&cfg)?;
@@ -438,16 +463,78 @@ fn snipcast_save_config(
     let previous_cfg=cfg.clone();
     drop(cfg);
     if suggestions_changed { text_suggestions::prepare(&app, &incoming)?; }
-    if let Err(e)=data::save_config(&incoming) {
+    let commands_changed=commands::hotkeys_changed(&previous_cfg,&incoming);
+    if commands_changed { if let Err(e)=commands::apply(&app,&incoming){commands::restore_available(&app,&previous_cfg);return Err(e);} }
+    if let Err(error)=mouse_hotkeys::prepare(&app,&incoming) {
         if suggestions_changed {let _=text_suggestions::prepare(&app,&previous_cfg);}
+        if commands_changed {commands::restore_available(&app,&previous_cfg);}
+        return Err(error);
+    }
+    // While recording the group is paused. Probe changed secondary keyboard
+    // bindings before writing them, then release them until blur resumes the group.
+    if skip_hotkey {
+        let probe = (|| -> Result<(), String> {
+            for (previous, next, apply) in [
+                (&previous_cfg.palette_hotkey_secondary, &incoming.palette_hotkey_secondary, apply_palette_hotkey as fn(&tauri::AppHandle, Option<&str>, &str) -> Result<(), String>),
+                (&previous_cfg.screenshot_hotkey_secondary, &incoming.screenshot_hotkey_secondary, apply_screenshot_hotkey),
+            ] {
+                if previous != next && !next.trim().is_empty() && !mouse_hotkeys::is_mouse(next) {
+                    apply(&app, None, next)?;
+                    let _ = app.global_shortcut().unregister(next.trim());
+                }
+            }
+            Ok(())
+        })();
+        if let Err(e) = probe {
+            let _ = mouse_hotkeys::prepare(&app, &previous_cfg);
+            if suggestions_changed { let _ = text_suggestions::prepare(&app, &previous_cfg); }
+            if commands_changed { commands::restore_available(&app, &previous_cfg); }
+            return Err(e);
+        }
+    }
+    if !skip_hotkey {
+        let apply = (|| -> Result<(), String> {
+            if previous_cfg.palette_hotkey_secondary != incoming.palette_hotkey_secondary {
+                apply_palette_hotkey(&app, Some(&previous_cfg.palette_hotkey_secondary), &incoming.palette_hotkey_secondary)?;
+            }
+            if previous_cfg.screenshot_hotkey_secondary != incoming.screenshot_hotkey_secondary {
+                apply_screenshot_hotkey(&app, Some(&previous_cfg.screenshot_hotkey_secondary), &incoming.screenshot_hotkey_secondary)?;
+            }
+            Ok(())
+        })();
+        if let Err(e) = apply {
+            if incoming.palette_hotkey_secondary != previous_cfg.palette_hotkey_secondary { let _ = apply_palette_hotkey(&app, Some(&incoming.palette_hotkey_secondary), &previous_cfg.palette_hotkey_secondary); }
+            if incoming.screenshot_hotkey_secondary != previous_cfg.screenshot_hotkey_secondary { let _ = apply_screenshot_hotkey(&app, Some(&incoming.screenshot_hotkey_secondary), &previous_cfg.screenshot_hotkey_secondary); }
+            let _ = mouse_hotkeys::prepare(&app, &previous_cfg);
+            if suggestions_changed { let _ = text_suggestions::prepare(&app, &previous_cfg); }
+            if commands_changed { commands::restore_available(&app, &previous_cfg); }
+            return Err(e);
+        }
+    }
+    if let Err(e)=data::save_config(&incoming) {
+        if !skip_hotkey { if incoming.palette_hotkey_secondary != previous_cfg.palette_hotkey_secondary { let _ = apply_palette_hotkey(&app, Some(&incoming.palette_hotkey_secondary), &previous_cfg.palette_hotkey_secondary); } }
+        if !skip_hotkey { if incoming.screenshot_hotkey_secondary != previous_cfg.screenshot_hotkey_secondary { let _ = apply_screenshot_hotkey(&app, Some(&incoming.screenshot_hotkey_secondary), &previous_cfg.screenshot_hotkey_secondary); } }
+        let _=mouse_hotkeys::prepare(&app,&previous_cfg);
+        if suggestions_changed {let _=text_suggestions::prepare(&app,&previous_cfg);}
+        if commands_changed {commands::restore_available(&app,&previous_cfg);}
         return Err(e);
     }
+    let history=app.state::<commands::history::History>();
+    let capture_guard=history.capture_gate.lock().map_err(|e|e.to_string())?;
     let mut cfg=state.lock().map_err(|e|e.to_string())?;
+    if cfg.commands.enabled != incoming.commands.enabled || cfg.commands.clipboard_enabled != incoming.commands.clipboard_enabled {
+        commands::history::reset_capture_sequence(&app);
+    }
     *cfg=incoming;
     // Native callbacks can run inline on the UI thread. Rebuilding the tray
     // reads AppConfig again, so no config guard may survive into these calls.
     let saved_cfg = cfg.clone();
     drop(cfg);
+    drop(capture_guard);
+    if previous_cfg.commands != saved_cfg.commands {
+        if !saved_cfg.commands.enabled { commands::cancel_opening(&app); }
+        let _=app.emit("snipcast://commands-catalog", ());
+    }
 
     if hotkey_changed && !skip_hotkey {
         apply_palette_hotkey(&app, Some(&prev_hotkey), &saved_cfg.palette_hotkey)?;
@@ -474,17 +561,17 @@ fn validate_capture_action_hotkeys(cfg:&data::AppConfig)->Result<(),String> {
     let mut used=HashSet::new();
     for (label,value) in [("Сохранить",&cfg.screenshot_save_hotkey),("Закрепить",&cfg.screenshot_pin_hotkey),("Копировать",&cfg.screenshot_copy_hotkey)] {
         if value.trim().is_empty(){continue;}
-        let shortcut=Shortcut::from_str(value.trim()).map_err(|e|format!("{label}: неверная комбинация ({e})"))?;
+        let shortcut=mouse_hotkeys::parse(value.trim()).map_err(|e|format!("{label}: неверная комбинация ({e})"))?;
         let base=value.split('+').filter(|v|!v.eq_ignore_ascii_case("alt")).collect::<Vec<_>>().join("+");
-        let base=Shortcut::from_str(&base).unwrap_or(shortcut);
+        let base=mouse_hotkeys::parse(&base).unwrap_or(shortcut);
         if !used.insert(base){return Err("Горячие клавиши действий должны различаться".into());}
-        if cfg.screenshot_presets.iter().map(|p|p.hotkey.as_str()).chain([cfg.palette_hotkey.as_str(),cfg.screenshot_hotkey.as_str()])
-            .any(|key|!key.is_empty()&&Shortcut::from_str(key).ok()==Some(shortcut)) {return Err(format!("{label}: комбинация занята глобальной горячей клавишей"));}
+        if cfg.screenshot_presets.iter().map(|p|p.hotkey.as_str()).chain([cfg.palette_hotkey.as_str(),cfg.screenshot_hotkey.as_str(),cfg.palette_hotkey_secondary.as_str(),cfg.screenshot_hotkey_secondary.as_str()])
+            .any(|key|!key.is_empty()&&mouse_hotkeys::parse(key).ok()==Some(shortcut)) {return Err(format!("{label}: комбинация занята глобальной горячей клавишей"));}
         let upper=value.to_ascii_uppercase();let main=upper.rsplit('+').next().unwrap_or("");
         let bare=upper.split('+').all(|part|part==main||matches!(part,"ALT"|"SHIFT"));
         let reserved=bare && matches!(main,"A"|"V"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"NUMPAD1"|"NUMPAD2"|"NUMPAD3"|"NUMPAD4"|"NUMPAD5"|"NUMPAD6"|"NUMPAD7"|"NUMPAD8"|"MINUS"|"EQUAL"|"NUMPADADD"|"NUMPADSUBTRACT"|"ARROWLEFT"|"ARROWRIGHT"|"ARROWUP"|"ARROWDOWN");
         let undo=["CommandOrControl+Z","CommandOrControl+Shift+Z","CommandOrControl+Y","Control+Z","Control+Shift+Z","Control+Y","Shift+Equal"].iter()
-            .any(|v|Shortcut::from_str(v).ok()==Some(base));
+            .any(|v|mouse_hotkeys::parse(v).ok()==Some(base));
         if reserved||main=="ESCAPE"||undo{return Err(format!("{label}: эта комбинация используется в редакторе"));}
     }
     Ok(())
@@ -493,6 +580,27 @@ fn validate_capture_action_hotkeys(cfg:&data::AppConfig)->Result<(),String> {
 #[cfg(test)]
 mod capture_hotkey_tests {
     use super::*;
+    #[test]
+    fn secondary_hotkeys_conflicts_and_roundtrip() {
+        let mut cfg=data::AppConfig::default();
+        cfg.palette_hotkey_secondary="Control+Alt+F10".into();
+        cfg.screenshot_hotkey_secondary="Alt+Mouse4".into();
+        assert!(validate_preset_hotkeys(&cfg).is_ok());
+        assert!(mouse_hotkeys::validate(&cfg).is_ok());
+        let saved=serde_json::to_string(&cfg).unwrap();
+        let restored:data::AppConfig=serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.palette_hotkey_secondary,cfg.palette_hotkey_secondary);
+        assert_eq!(restored.screenshot_hotkey_secondary,cfg.screenshot_hotkey_secondary);
+        cfg.screenshot_hotkey_secondary=cfg.palette_hotkey_secondary.clone();
+        assert!(validate_preset_hotkeys(&cfg).is_err());
+        cfg.screenshot_hotkey_secondary="Alt+Mouse4".into();
+        cfg.screenshot_copy_hotkey="Alt+Mouse4".into();
+        assert!(validate_capture_action_hotkeys(&cfg).is_err());
+        cfg.text_suggestions.toggle_hotkey=cfg.palette_hotkey_secondary.clone();
+        assert!(text_suggestions::validate(&cfg).is_err());
+        cfg.commands.items.get_mut("emoji").unwrap().hotkey=cfg.palette_hotkey_secondary.clone();
+        assert!(commands::validate(&cfg).is_err());
+    }
     #[test]
     fn defaults_and_control_remapping_are_valid() {
         let mut cfg=data::AppConfig::default();assert!(validate_capture_action_hotkeys(&cfg).is_ok());
@@ -513,17 +621,19 @@ mod capture_hotkey_tests {
 }
 
 fn validate_preset_hotkeys(cfg: &data::AppConfig) -> Result<(), String> {
-    let mut seen: HashSet<Shortcut> = HashSet::new();
+    let mut seen: HashSet<mouse_hotkeys::Shortcut> = HashSet::new();
     for (label, combo) in [
         ("палитры", cfg.palette_hotkey.as_str()),
         ("скриншота", cfg.screenshot_hotkey.as_str()),
+        ("палитры (второй)", cfg.palette_hotkey_secondary.as_str()),
+        ("скриншота (второй)", cfg.screenshot_hotkey_secondary.as_str()),
     ] {
         let h = combo.trim();
         if h.is_empty() {
             continue;
         }
         let sc =
-            Shortcut::from_str(h).map_err(|e| format!("Хоткей {label} «{h}»: {e}"))?;
+            mouse_hotkeys::parse(h).map_err(|e| format!("Хоткей {label} «{h}»: {e}"))?;
         if !seen.insert(sc) {
             return Err(format!("Комбинация «{h}» уже используется"));
         }
@@ -533,7 +643,7 @@ fn validate_preset_hotkeys(cfg: &data::AppConfig) -> Result<(), String> {
         if h.is_empty() {
             continue;
         }
-        let sc = Shortcut::from_str(h)
+        let sc = mouse_hotkeys::parse(h)
             .map_err(|e| format!("Пресет «{}»: неверная комбинация «{h}»: {e}", p.title))?;
         if !seen.insert(sc) {
             return Err(format!(
@@ -547,10 +657,11 @@ fn validate_preset_hotkeys(cfg: &data::AppConfig) -> Result<(), String> {
 
 #[tauri::command]
 fn snipcast_preset_hotkeys_pause(app: tauri::AppHandle) -> Result<(), String> {
+    mouse_hotkeys::pause(&app,mouse_hotkeys::PRESETS,true);
     let gs = app.global_shortcut();
     let reg = app.state::<Mutex<PresetHotkeys>>();
-    let mut r = reg.lock().map_err(|e| e.to_string())?;
-    for h in r.0.drain() {
+    let keys = std::mem::take(&mut reg.lock().map_err(|e| e.to_string())?.0);
+    for h in keys {
         let _ = gs.unregister(h.as_str());
     }
     Ok(())
@@ -558,6 +669,7 @@ fn snipcast_preset_hotkeys_pause(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn snipcast_preset_hotkeys_resume(app: tauri::AppHandle, state: State<'_, Mutex<data::AppConfig>>) -> Result<(), String> {
+    mouse_hotkeys::pause(&app,mouse_hotkeys::PRESETS,false);
     let cfg = state.lock().map_err(|e| e.to_string())?.clone();
     apply_preset_hotkeys(&app, &cfg)
 }
@@ -589,14 +701,19 @@ fn snipcast_api_token_regenerate(app: tauri::AppHandle, state: State<'_, Mutex<d
 
 #[tauri::command]
 fn snipcast_palette_hotkey_pause(app: tauri::AppHandle, state: State<'_, Mutex<data::AppConfig>>) -> Result<(), String> {
-    let cfg = state.lock().map_err(|e| e.to_string())?;
+    mouse_hotkeys::pause(&app,mouse_hotkeys::PALETTE,true);
+    let cfg = state.lock().map_err(|e| e.to_string())?.clone();
+    let _ = app.global_shortcut().unregister(cfg.palette_hotkey_secondary.trim());
     let _ = app.global_shortcut().unregister(cfg.palette_hotkey.trim());
     Ok(())
 }
 
 #[tauri::command]
 fn snipcast_palette_hotkey_resume(app: tauri::AppHandle, state: State<'_, Mutex<data::AppConfig>>) -> Result<(), String> {
-    let cfg = state.lock().map_err(|e| e.to_string())?;
+    mouse_hotkeys::pause(&app,mouse_hotkeys::PALETTE,false);
+    let cfg = state.lock().map_err(|e| e.to_string())?.clone();
+    let _ = app.global_shortcut().unregister(cfg.palette_hotkey_secondary.trim());
+    apply_palette_hotkey(&app, None, &cfg.palette_hotkey_secondary)?;
     let h = cfg.palette_hotkey.trim();
     let _ = app.global_shortcut().unregister(h);
     apply_palette_hotkey(&app, None, h)?;
@@ -605,7 +722,9 @@ fn snipcast_palette_hotkey_resume(app: tauri::AppHandle, state: State<'_, Mutex<
 
 #[tauri::command]
 fn snipcast_screenshot_hotkey_pause(app: tauri::AppHandle, state: State<'_, Mutex<data::AppConfig>>) -> Result<(), String> {
-    let cfg = state.lock().map_err(|e| e.to_string())?;
+    mouse_hotkeys::pause(&app,mouse_hotkeys::SCREENSHOT,true);
+    let cfg = state.lock().map_err(|e| e.to_string())?.clone();
+    let _ = app.global_shortcut().unregister(cfg.screenshot_hotkey_secondary.trim());
     let h = cfg.screenshot_hotkey.trim();
     if !h.is_empty() {
         let _ = app.global_shortcut().unregister(h);
@@ -615,7 +734,10 @@ fn snipcast_screenshot_hotkey_pause(app: tauri::AppHandle, state: State<'_, Mute
 
 #[tauri::command]
 fn snipcast_screenshot_hotkey_resume(app: tauri::AppHandle, state: State<'_, Mutex<data::AppConfig>>) -> Result<(), String> {
-    let cfg = state.lock().map_err(|e| e.to_string())?;
+    mouse_hotkeys::pause(&app,mouse_hotkeys::SCREENSHOT,false);
+    let cfg = state.lock().map_err(|e| e.to_string())?.clone();
+    let _ = app.global_shortcut().unregister(cfg.screenshot_hotkey_secondary.trim());
+    apply_screenshot_hotkey(&app, None, &cfg.screenshot_hotkey_secondary)?;
     let h = cfg.screenshot_hotkey.trim();
     let _ = app.global_shortcut().unregister(h);
     apply_screenshot_hotkey(&app, None, h)?;
@@ -856,12 +978,13 @@ fn snipcast_clipboard_write_text(text: String) -> Result<(), String> {
     rich_clipboard::write_plain_text(&text)
 }
 
-/// Распознать текст в области активного захвата (кроп берётся из чистого снимка).
+/// Распознать текст в области исходного снимка захвата или истории, без аннотаций.
 #[tauri::command]
 async fn snipcast_ocr_region(
     app: tauri::AppHandle,
     cfg: State<'_, Mutex<data::AppConfig>>,
     label: String,
+    history_id: Option<String>,
     x: u32,
     y: u32,
     width: u32,
@@ -879,7 +1002,7 @@ async fn snipcast_ocr_region(
     };
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let png = screenshot::crop_from_capture(&app2, &label, x, y, width, height)?;
+        let png = screenshot::crop_from_capture(&app2, &label, history_id.as_deref(), x, y, width, height)?;
         match eng.as_str() {
             "paddle" => {
                 #[cfg(target_os = "windows")]
@@ -971,6 +1094,16 @@ fn snipcast_ocr_languages() -> Vec<String> {
 }
 
 pub fn run() {
+    let context = tauri::generate_context!();
+    // Build QA webviews with an explicit path: Tauri's config conversion does not
+    // forward dataDirectory. Keep the entire profile inside SNIPCAST_DATA_DIR.
+    #[cfg(feature = "inline-qa")]
+    let (context, qa_windows) = {
+        let mut context = context;
+        let windows = context.config().app.windows.iter().filter(|w| w.create).cloned().collect::<Vec<_>>();
+        for window in &mut context.config_mut().app.windows { window.create = false; }
+        (context, windows)
+    };
     #[cfg(target_os="windows")]
     {
         // GDI sources already contain the display's RGB values. WebView2's
@@ -994,8 +1127,10 @@ pub fn run() {
     // Загружаем до setup: окно палитры может вызвать IPC сразу после load, а state из setup приходит позже.
     let initial_cfg = data::load_config().unwrap_or_default();
     let setup_hotkey = initial_cfg.palette_hotkey.clone();
+    let setup_palette_secondary = initial_cfg.palette_hotkey_secondary.clone();
     let setup_autostart = initial_cfg.autostart;
     let setup_screenshot_hotkey = initial_cfg.screenshot_hotkey.clone();
+    let setup_screenshot_secondary = initial_cfg.screenshot_hotkey_secondary.clone();
 
     let mut builder = tauri::Builder::default()
         .register_uri_scheme_protocol("snipcast-video", |ctx, request| video::media_response(ctx.app_handle(), request))
@@ -1016,11 +1151,23 @@ pub fn run() {
         .manage(Mutex::new(screenshot::ScreenshotState::default()))
         .manage(video::VideoState::default())
         .manage(ai::AiAgentState::default())
+        .manage(commands::Runtime::default())
+        .manage(mouse_hotkeys::Runtime::default())
+        .manage(commands::history::History::default())
         .manage(updater::UpdateRuntime::default())
         .manage(text_suggestions::Runtime::default())
         .manage(Mutex::new(PresetHotkeys::default()))
         .manage(Mutex::new(None::<TrayIcon>))
         .setup(move |app| {
+            #[cfg(feature = "inline-qa")]
+            for window in &qa_windows {
+                tauri::WebviewWindowBuilder::from_config(app, window)?
+                    .data_directory(data::snipcast_base_dir().join("webview"))
+                    .build()?;
+            }
+            if let Err(e) = apply_palette_hotkey(&app.handle(), None, &setup_palette_secondary) {
+                eprintln!("[snipcast] secondary palette hotkey: {e}");
+            }
             let hotkey = setup_hotkey;
             if let Err(e) = apply_palette_hotkey(&app.handle(), None, &hotkey) {
                 eprintln!("[snipcast] palette hotkey register failed ({hotkey}): {e}");
@@ -1030,6 +1177,9 @@ pub fn run() {
                 }
             }
 
+            if let Err(e) = apply_screenshot_hotkey(&app.handle(), None, &setup_screenshot_secondary) {
+                eprintln!("[snipcast] secondary screenshot hotkey: {e}");
+            }
             let shot_hotkey = setup_screenshot_hotkey;
             if let Err(e) = apply_screenshot_hotkey(&app.handle(), None, &shot_hotkey) {
                 eprintln!("[snipcast] screenshot hotkey register failed ({shot_hotkey}): {e}");
@@ -1044,6 +1194,10 @@ pub fn run() {
                 eprintln!("[snipcast] inline suggestions: {e}");
             }
             updater::start_scheduler(app.handle().clone());
+            commands::start(app.handle());
+            if let Err(error)=mouse_hotkeys::prepare(app.handle(),&initial_cfg){commands::report(app.handle(),error);}
+            #[cfg(feature = "inline-qa")]
+            commands::history::start_qa_paste_many(app.handle().clone());
 
             // Прогрев скрытых окон оверлеев захвата: первый после запуска
             // захват открывается бесшовно, без «холодного» моргания WebView2.
@@ -1124,6 +1278,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::snipcast_commands_settings_target, commands::snipcast_commands_section, commands::snipcast_commands_ready, commands::snipcast_commands_catalog, commands::snipcast_commands_run, commands::snipcast_commands_refresh, commands::snipcast_commands_hide,
+            commands::snipcast_commands_hotkeys_pause, commands::snipcast_commands_hotkeys_resume, commands::snipcast_commands_translate, commands::snipcast_commands_text, commands::translate::snipcast_translation_history, commands::translate::snipcast_translation_remember,
+            commands::history::snipcast_history_list, commands::history::snipcast_history_detail, commands::history::snipcast_history_latest_text, commands::history::snipcast_history_action, commands::history::snipcast_history_paste_many,
+            commands::history::snipcast_video_link_prepare, commands::history::snipcast_video_link_publish,
             text_suggestions::snipcast_suggestions_view,
             text_suggestions::snipcast_suggestions_status,
             text_suggestions::snipcast_suggestions_pending,
@@ -1131,7 +1289,8 @@ pub fn run() {
             text_suggestions::snipcast_suggestions_complete,
             text_suggestions::snipcast_suggestions_hotkeys_pause,
             text_suggestions::snipcast_suggestions_hotkeys_resume,
-            palette_hide,
+            palette_hide, snipcast_palette_blur,
+            snipcast_unified_palette_state,
             paste_insert::paste_template,
             paste_insert::paste_template_text_then_files,
             snipcast_clipboard_read_text,
@@ -1163,7 +1322,10 @@ pub fn run() {
             capture_history::snipcast_capture_history_open,
             capture_history::snipcast_capture_history_record,
             snipcast_close_capture,
-            capture_keyboard::snipcast_capture_keyboard_state,
+            #[cfg(feature = "inline-qa")]
+            mouse_hotkeys::snipcast_mouse_hotkeys_qa_state,
+            mouse_hotkeys::snipcast_mouse_hotkey_recording,
+            capture_keyboard::snipcast_capture_keyboard_state, capture_keyboard::snipcast_hotkey_recording,
             snipcast_capture_ready,
             snipcast_capture_info,
             snipcast_capture_image_data,
@@ -1211,6 +1373,12 @@ pub fn run() {
     builder
         .on_window_event(|window, event| {
             let label = window.label();
+            if label==commands::WINDOW {
+                if let tauri::WindowEvent::CloseRequested{api,..}=event {api.prevent_close();commands::hide(window.app_handle());}
+                if let tauri::WindowEvent::Resized(_)=event {if let Some(w)=window.app_handle().get_webview_window(label){commands::frame(&w);}}
+                return;
+            }
+
             if [video::CONTROL,video::EDITOR].contains(&label) {
                 if let tauri::WindowEvent::Destroyed=event {video::window_closed(window.app_handle(),label);}
                 if let tauri::WindowEvent::Resized(_)=event {if let Some(w)=window.app_handle().get_webview_window(label){video::configure_window_frame(&w);}}
@@ -1318,7 +1486,7 @@ pub fn run() {
                     std::thread::sleep(Duration::from_millis(200));
                     if let Some(w) = app.get_webview_window(&label) {
                         if let Ok(focused) = w.is_focused() {
-                            if !focused {
+                            if !focused && !screenshot::capture_active(&app) {
                                 let _ = w.hide();
                             }
                         }
@@ -1326,6 +1494,6 @@ pub fn run() {
                 });
             }
         })
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running Snipcast");
 }

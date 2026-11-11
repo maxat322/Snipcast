@@ -1,3 +1,4 @@
+import {PaletteFrame,PaletteChrome,PaletteSearch,PaletteHints,PaletteItemText,PaletteCalculation,PaletteBackButton} from './components/PaletteFrame';
 import {
   useCallback,
   useEffect,
@@ -8,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {listen} from "@tauri-apps/api/event";
+import {type Catalog,type Entry,search as searchCommands,calculate,commandEnabled,visibleCommandIds} from "./commands/model";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { applyBracketReplacements, extractOrderedBracketLabels } from "./bracketPlaceholders";
 import { extractFileLinkRefs, stripFileLinkPlaceholders } from "./fileLinkPlaceholders";
@@ -20,6 +23,9 @@ import {
 } from "./uiTheme";
 import "./theme-overrides.css";
 import "./App.css";
+import "./commands/commands.css";
+import {CommandsApp as EmbeddedCommands} from './commands/CommandsApp';
+const COMMANDS_GROUP_ID = '__snipcast_commands__';
 
 function IconFolderOutline({ className }: { className?: string }) {
   return (
@@ -184,7 +190,9 @@ type FolderSearchDisplayRow =
 /** Плоский порядок строк поиска для клавиатуры и aria-activedescendant. */
 type SearchNavEntry =
   | { kind: "subpunct"; navKey: string; labelPath: string; drillFrames: DrillFrame[] }
-  | { kind: "hit"; hit: SearchHit };
+  | { kind: "hit"; hit: SearchHit }
+  | { kind: "command"; entry: Entry }
+  | { kind: "calculation"; result: string };
 
 type SearchHitGroups = {
   /** Строки блока «по подпункту»: заголовок подпункта, затем его шаблоны. */
@@ -434,6 +442,11 @@ function App() {
   const searchRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<(HTMLElement | null)[]>([]);
   const selectedIndexRef = useRef(0);
+  const [embeddedSection,setEmbeddedSection]=useState<string|null>(null);
+  const embeddedSectionRef=useRef(embeddedSection);
+  embeddedSectionRef.current=embeddedSection;
+  useEffect(()=>{if(!embeddedSection)searchRef.current?.focus()},[embeddedSection]);
+  const [commandCatalog,setCommandCatalog]=useState<Catalog|null>(null);
   const [query, setQuery] = useState("");
   const queryRef = useRef(query);
   queryRef.current = query;
@@ -446,7 +459,6 @@ function App() {
   const [varMap, setVarMap] = useState<Record<string, string>>({});
   const [drillStack, setDrillStack] = useState<DrillFrame[]>([]);
   const [activeGroupId, setActiveGroupId] = useState("all");
-  const [groupTabIndex, setGroupTabIndex] = useState(0);
   const [bracketPrompt, setBracketPrompt] = useState<BracketPromptState | null>(null);
   const bracketPromptRef = useRef<BracketPromptState | null>(null);
   bracketPromptRef.current = bracketPrompt;
@@ -467,7 +479,15 @@ function App() {
     }
     return Array.from(byId.values());
   }, [uniqueTemplates]);
-  const groupIds = useMemo(() => ["all", ...groupTabs.map((g) => g.id)], [groupTabs]);
+  const showCommandsTab = !!commandCatalog && commandCatalog.config.enabled !== false;
+  const commandsGroupActive = showCommandsTab && activeGroupId === COMMANDS_GROUP_ID;
+  const groupIds = useMemo(() => ["all", ...groupTabs.map((g) => g.id), ...(showCommandsTab ? [COMMANDS_GROUP_ID] : [])], [groupTabs, showCommandsTab]);
+  const groupTabIndex = Math.max(0, groupIds.indexOf(activeGroupId));
+  useEffect(() => {
+    if (!showCommandsTab && activeGroupId === COMMANDS_GROUP_ID) {
+      setActiveGroupId('all');setDrillStack([]);setSelectedIndex(0);
+    }
+  }, [showCommandsTab, activeGroupId]);
   const templatesByGroup = useMemo(
     () =>
       activeGroupId === "all"
@@ -480,8 +500,13 @@ function App() {
     () => buildSearchHitGroups(templatesByGroup, query),
     [templatesByGroup, query],
   );
+  const includeCommands = activeGroupId === 'all' || commandsGroupActive;
+  const commandMatches=useMemo(()=>includeCommands&&(searching||commandsGroupActive)&&commandCatalog?searchCommands(commandCatalog.entries,query,commandCatalog.config).filter(e=>e.kind==='application'?searching: e.kind==='command'&&(visibleCommandIds.has(e.id)||searching&&e.id==='screenshot')):[],[includeCommands,searching,commandsGroupActive,commandCatalog,query]);
+  const calculationState=includeCommands&&searching&&commandCatalog&&commandEnabled(commandCatalog.config,'calculator')?calculate(query):null;
+  const calculation=calculationState?.result;
   const searchNavEntries = useMemo((): SearchNavEntry[] => {
     const entries: SearchNavEntry[] = [];
+    if(calculation)entries.push({kind:"calculation",result:calculation});
     for (const r of searchHitGroups.folderDisplayRows) {
       if (r.kind === "subpunct") {
         entries.push({
@@ -500,9 +525,12 @@ function App() {
     for (const h of searchHitGroups.contentHits) {
       entries.push({ kind: "hit", hit: h });
     }
+    for (const entry of commandMatches) entries.push({kind:"command",entry});
     return entries;
-  }, [searchHitGroups]);
+  }, [searchHitGroups,commandMatches,calculation]);
 
+  const copyCalculation=useCallback(async(result:string)=>{await invoke("snipcast_commands_text",{text:result,paste:false});await invoke("palette_hide");},[]);
+  const runUnifiedCommand=useCallback(async (id:string)=>{if(visibleCommandIds.has(id)){setEmbeddedSection(id);return;}if(id!=="screenshot")await invoke("palette_hide");await invoke("snipcast_commands_run",{id});},[]);
   const searchNavEntriesRef = useRef<SearchNavEntry[]>(searchNavEntries);
   searchNavEntriesRef.current = searchNavEntries;
 
@@ -514,7 +542,7 @@ function App() {
   const filteredBrowseRef = useRef(filteredBrowse);
   filteredBrowseRef.current = filteredBrowse;
 
-  const activeList: "search" | "browse" = searching ? "search" : "browse";
+  const activeList: "search" | "browse" = searching || commandsGroupActive ? "search" : "browse";
   const browseLength = filteredBrowse.length;
   const searchNavLength = searchNavEntries.length;
 
@@ -568,7 +596,7 @@ function App() {
         setActiveGroupId("all");
       } else {
         setActiveGroupId((prev) => {
-          if (prev === "all") return prev;
+          if (prev === "all" || prev === COMMANDS_GROUP_ID) return prev;
           return rows.some((r) => r.groupId === prev) ? prev : "all";
         });
       }
@@ -689,6 +717,19 @@ function App() {
     [pasteContent, collectBracketValuesFromForm],
   );
 
+  useEffect(()=>{
+    const off=listen('snipcast://palette-open',()=>{
+      setEmbeddedSection(null);setQuery('');setActiveGroupId('all');setDrillStack([]);setSelectedIndex(0);setHoverHighlightIndex(null);
+    });
+    return()=>{void off.then(f=>f())};
+  },[]);
+  useEffect(()=>{
+    let active=true,revision=0;
+    const refresh=()=>{const request=++revision;void invoke<Catalog>("snipcast_commands_catalog").then(c=>{if(!active||request!==revision)return;setCommandCatalog(c);setEmbeddedSection(current=>current&&!commandEnabled(c.config,current)?null:current)}).catch(console.error)};
+    const off=listen('snipcast://commands-catalog',refresh);
+    void off.then(refresh);
+    return()=>{active=false;void off.then(f=>f())};
+  },[]);
   useEffect(() => {
     void reloadData();
   }, [reloadData]);
@@ -717,11 +758,6 @@ function App() {
   }, [query, drillStack, searching, activeGroupId]);
 
   useEffect(() => {
-    const idx = groupIds.indexOf(activeGroupId);
-    setGroupTabIndex(idx >= 0 ? idx : 0);
-  }, [activeGroupId, groupIds]);
-
-  useEffect(() => {
     if (searching || activeList !== "browse" || filteredBrowse.length === 0) return;
     setSelectedIndex((i) => {
       const v = filteredBrowse[i];
@@ -746,7 +782,7 @@ function App() {
     try {
       void getCurrentWindow()
         .onFocusChanged(({ payload: focused }) => {
-          if (focused) {
+          if (focused && !embeddedSectionRef.current) {
             armPaletteHoverIgnore();
             setBracketPrompt(null);
             setQuery("");
@@ -799,6 +835,7 @@ function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (embeddedSection) return;
       const bp = bracketPromptRef.current;
       if (bp) {
         if (e.key === "Escape") {
@@ -830,7 +867,19 @@ function App() {
         return;
       }
 
-      const isSearchMode = queryRef.current.trim().length > 0;
+      if (e.key === "Tab" && !queryRef.current.trim()) {
+        e.preventDefault();
+        if (groupIds.length <= 1) return;
+        const next = e.shiftKey
+          ? (groupTabIndex - 1 + groupIds.length) % groupIds.length
+          : (groupTabIndex + 1) % groupIds.length;
+        setActiveGroupId(groupIds[next]!);
+        setDrillStack([]);
+        setSelectedIndex(0);
+        return;
+      }
+
+      const isSearchMode = queryRef.current.trim().length > 0 || commandsGroupActive;
       const effectiveNavLen = isSearchMode ? searchNavEntriesRef.current.length : filteredBrowseRef.current.length;
       if (effectiveNavLen === 0) return;
 
@@ -868,19 +917,6 @@ function App() {
         return;
       }
 
-      if (e.key === "Tab" && !queryRef.current.trim()) {
-        e.preventDefault();
-        if (groupIds.length <= 1) return;
-        const next = e.shiftKey
-          ? (groupTabIndex - 1 + groupIds.length) % groupIds.length
-          : (groupTabIndex + 1) % groupIds.length;
-        setGroupTabIndex(next);
-        setActiveGroupId(groupIds[next]!);
-        setDrillStack([]);
-        setSelectedIndex(0);
-        return;
-      }
-
       if (e.key === "ArrowLeft" && !queryRef.current.trim() && drillStack.length > 0) {
         e.preventDefault();
         setDrillStack((s) => s.slice(0, -1));
@@ -898,7 +934,7 @@ function App() {
       if (e.key === "Enter") {
         e.preventDefault();
         const idx = selectedIndexRef.current;
-        const searchMode = queryRef.current.trim().length > 0;
+        const searchMode = queryRef.current.trim().length > 0 || commandsGroupActive;
         if (searchMode) {
           const entry = searchNavEntriesRef.current[idx];
           if (!entry) return;
@@ -914,6 +950,8 @@ function App() {
             });
             return;
           }
+          if(entry.kind==="calculation"){void copyCalculation(entry.result);return;}
+          if(entry.kind==="command"){void runUnifiedCommand(entry.entry.id);return;}
           startInsert(entry.hit.pasteText);
           return;
         }
@@ -942,46 +980,38 @@ function App() {
 
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [navLength, hide, startInsert, openSettings, groupIds, groupTabIndex, filteredBrowse, drillStack]);
+  }, [navLength, hide, startInsert, openSettings, groupIds, groupTabIndex, filteredBrowse, drillStack,runUnifiedCommand,copyCalculation,embeddedSection,commandsGroupActive]);
 
   const activeSearchEntry = searching ? searchNavEntries[selectedIndex] : undefined;
   const activeDescendantId =
     navLength > 0
-      ? activeList === "search" && activeSearchEntry
-        ? activeSearchEntry.kind === "subpunct"
+      ? activeList === "search"
+        ? !activeSearchEntry ? undefined : activeSearchEntry.kind === "subpunct"
           ? `snipcast-${activeSearchEntry.navKey}`
-          : `snipcast-hit-${activeSearchEntry.hit.key}`
-        : `snipcast-opt-${visibleRowId(filteredBrowse[selectedIndex] as VisibleRow)}`
+          : activeSearchEntry.kind === "command" ? `snipcast-command-${activeSearchEntry.entry.id}` : activeSearchEntry.kind === "calculation" ? "snipcast-calculation" : `snipcast-hit-${activeSearchEntry.hit.key}`
+        : filteredBrowse[selectedIndex] ? `snipcast-opt-${visibleRowId(filteredBrowse[selectedIndex])}` : undefined
       : undefined;
 
+  if(embeddedSection)return <EmbeddedCommands embeddedSection={embeddedSection} onBack={()=>{setEmbeddedSection(null);queueMicrotask(()=>searchRef.current?.focus());}}/>;
+
   return (
-    <div className="palette" data-tauri-drag-region onContextMenu={(e) => e.preventDefault()}>
-      <header className="palette__chrome">
+    <PaletteFrame>
+      <PaletteChrome>
         {drillStack.length > 0 && !searching ? (
           <div className="palette__breadcrumb">
-            <button
-              type="button"
-              className="palette__back"
-              data-tauri-drag-region="false"
-              onClick={() => {
-                setDrillStack((s) => s.slice(0, -1));
-                setSelectedIndex(0);
-              }}
-            >
-              ← {drillStack.map((f) => f.title).join(" › ")}
-            </button>
+            <PaletteBackButton onClick={() => {
+              setDrillStack((s) => s.slice(0, -1));
+              setSelectedIndex(0);
+            }}/>
+            <span className="palette__breadcrumb-title">{drillStack.map((f) => f.title).join(" › ")}</span>
           </div>
         ) : null}
-        <div className="palette__search-wrap">
-          <span className="palette__search-icon" aria-hidden>
-            🔎
-          </span>
-          <input
+          <PaletteSearch
             ref={searchRef}
             className="palette__search"
             type="text"
             data-tauri-drag-region="false"
-            placeholder="Поиск по шаблонам..."
+            placeholder="Поиск шаблонов, команд и приложений..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -992,7 +1022,6 @@ function App() {
             aria-controls="snipcast-listbox"
             aria-activedescendant={activeDescendantId}
           />
-        </div>
         <div className="palette__group-tabs" role="tablist" aria-label="Группы">
           <button
             type="button"
@@ -1026,18 +1055,28 @@ function App() {
               {g.title}
             </button>
           ))}
+          {showCommandsTab && <button
+            type="button"
+            role="tab"
+            data-tauri-drag-region="false"
+            aria-selected={commandsGroupActive}
+            className={`palette__group-tab${commandsGroupActive ? ' is-active' : ''}`}
+            onClick={() => {
+              setActiveGroupId(COMMANDS_GROUP_ID);setDrillStack([]);setSelectedIndex(0);searchRef.current?.focus();
+            }}
+          >Команды</button>}
         </div>
-      </header>
+      </PaletteChrome>
 
       <ul
         id="snipcast-listbox"
         className="palette__list"
         role="listbox"
-        aria-label="Шаблоны"
+        aria-label="Шаблоны и команды"
         onMouseLeave={() => setHoverHighlightIndex(null)}
       >
         {activeList === "search" ? (
-          searchNavLength === 0 ? (
+          searchNavLength === 0 && !calculationState?.error ? (
             <li className="palette__empty">Нет совпадений</li>
           ) : (
             <>
@@ -1080,9 +1119,12 @@ function App() {
                   );
                 };
 
-                let navIdx = 0;
+                const calcOffset = calculation ? 1 : 0;
+                let navIdx = calcOffset;
                 return (
                   <>
+                    {calculationState?.error&&<li className="palette__item commands__calc" role="status"><PaletteCalculation expression={query} result={calculationState.error}/></li>}
+                    {calculation&&<li id="snipcast-calculation" role="option" aria-selected={selectedIndex===0} ref={el=>{itemRefs.current[0]=el}} className={`palette__item commands__calc${selectedIndex===0?' palette__item--kb':''}`} onPointerDown={e=>{if(e.button===0)onListPointerDownSelect(0)}} onClick={()=>void copyCalculation(calculation)}><PaletteCalculation expression={query} result={calculation}/></li>}
                     {searchHitGroups.folderDisplayRows.map((row) => {
                       if (row.kind === "subpunct") {
                         const myIndex = navIdx++;
@@ -1132,7 +1174,7 @@ function App() {
                       return renderHit(row.hit, myIndex);
                     })}
                     {showSepBeforeTitle ? <li className="palette__search-sep" aria-hidden /> : null}
-                    {searchHitGroups.titleHits.map((hit, i) => renderHit(hit, folderNavCount + i))}
+                    {searchHitGroups.titleHits.map((hit, i) => renderHit(hit, calcOffset + folderNavCount + i))}
                     {showContentHeader ? (
                       <>
                         <li className="palette__search-sep" aria-hidden />
@@ -1142,8 +1184,10 @@ function App() {
                       </>
                     ) : null}
                     {searchHitGroups.contentHits.map((hit, i) =>
-                      renderHit(hit, folderNavCount + tLen + i),
+                      renderHit(hit, calcOffset + folderNavCount + tLen + i),
                     )}
+                    {commandMatches.length>0&&<><li className="palette__search-sep" aria-hidden/><li className="palette__search-heading">Команды и приложения</li>{commandMatches.map((entry,i)=>{const index=folderNavCount+tLen+cLen+(calculation?1:0)+i;return <li key={entry.id} id={`snipcast-command-${entry.id}`} role="option" aria-selected={selectedIndex===index} ref={el=>{itemRefs.current[index]=el}} className={`palette__subhit${selectedIndex===index?' palette__subhit--kb':''}${hoverHighlightIndex===index?' palette__subhit--cursor':''}`} onPointerDown={e=>{if(e.button===0)onListPointerDownSelect(index)}} onMouseEnter={()=>onListMouseEnter(index)} onClick={()=>void runUnifiedCommand(entry.id)}><span className="palette__subhit-title">{entry.icon.startsWith('data:image/')?<img style={{width:20,height:20,objectFit:"contain",verticalAlign:"middle",marginRight:6}} src={entry.icon} alt=""/>:<span aria-hidden>{entry.icon} </span>}{entry.title}</span><span className="palette__subhit-preview">{entry.kind==='application'?'Приложение':'Команда'}</span></li>})}</>}
+
                   </>
                 );
               })()}
@@ -1217,10 +1261,7 @@ function App() {
               >
                 <div className="palette__item-row">
                   {hasBranch ? <IconFolderOutline className="palette__folder-icon" /> : null}
-                  <div className="palette__item-text">
-                    <div className="palette__item-title">{visibleTitle(v)}</div>
-                    {hasBranch ? null : <div className="palette__item-preview">{visiblePreview(v)}</div>}
-                  </div>
+                  <PaletteItemText title={visibleTitle(v)} preview={hasBranch?null:visiblePreview(v)}/>
                   {hasBranch ? (
                     <span className="palette__chevron" aria-hidden>
                       ›
@@ -1233,34 +1274,8 @@ function App() {
         )}
       </ul>
 
-      <footer className="palette__hints">
-        <span>
-          навигация <kbd>↑</kbd> <kbd>↓</kbd>
-        </span>
-        <span>
-          вставить <kbd>Enter</kbd>
-        </span>
-        <span>
-          {drillStack.length > 0 && !searching ? "назад" : "закрыть"} <kbd>Esc</kbd>
-        </span>
-        <span>
-          группы <kbd>Tab</kbd>
-        </span>
-        <span className="palette__hints-muted palette__hints-settings">
-          настройки
-          {/Mac|iPhone|iPad/.test(navigator.userAgent) ? (
-            <>
-              <kbd>⌘</kbd>
-              <kbd>K</kbd>
-            </>
-          ) : (
-            <>
-              <kbd>Ctrl</kbd>
-              <kbd>K</kbd>
-            </>
-          )}
-        </span>
-      </footer>
+      <PaletteHints back={drillStack.length > 0 && !searching} primary={activeSearchEntry?.kind==='calculation'?'Копировать результат':'вставить'} onPrimary={activeSearchEntry?.kind==='calculation'?()=>void copyCalculation(activeSearchEntry.result):undefined}/>
+
 
       {bracketPrompt ? (
         <div
@@ -1348,7 +1363,7 @@ function App() {
           </div>
         </div>
       ) : null}
-    </div>
+    </PaletteFrame>
   );
 }
 

@@ -1,0 +1,1 @@
+Emoji: Unicode Emoji 16.0 (emoji-test.txt), CLDR release 46 Russian and English annotations. Sources: https://unicode.org/Public/emoji/16.0/emoji-test.txt and https://github.com/unicode-org/cldr/tree/release-46/common. Unicode License V3 (UNICODE-LICENSE.txt). Glyphs are rendered by the operating system. Regenerate with python -B scripts/generate-emoji.py.

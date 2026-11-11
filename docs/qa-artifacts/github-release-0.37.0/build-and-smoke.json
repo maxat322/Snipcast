@@ -1,0 +1,66 @@
+{
+  "version": "0.37.0",
+  "sha256": "be848834713f8dad741408d5b5f1ec10d216fd5cd375539c05ec32e8bbd40669",
+  "bytes": 21295104,
+  "embeddedFrontend": "index-ie-QnePx.js",
+  "productionIdentifier": "com.snipcast.app",
+  "isolatedProfile": true,
+  "privateClipboardRead": false,
+  "realIPC": true,
+  "mainWebViewLoaded": true,
+  "trayReady": true,
+  "windows": [
+    {
+      "class": "Tauri Window",
+      "title": "Инструмент — Snipcast",
+      "visible": false
+    },
+    {
+      "class": "Tauri Window",
+      "title": "Быстрая палитра — Snipcast",
+      "visible": false
+    },
+    {
+      "class": "Tauri Window",
+      "title": "Snipcast",
+      "visible": false
+    },
+    {
+      "class": "global_hotkey_app",
+      "title": "",
+      "visible": false
+    },
+    {
+      "class": "Tauri Window",
+      "title": "Настройки — Snipcast",
+      "visible": false
+    },
+    {
+      "class": "tray_icon_app",
+      "title": "",
+      "visible": false
+    },
+    {
+      "class": "com.snipcast.app-sic",
+      "title": "com.snipcast.app-siw",
+      "visible": true
+    },
+    {
+      "class": "Tao Thread Event Target",
+      "title": "",
+      "visible": true
+    },
+    {
+      "class": "IME",
+      "title": "Default IME",
+      "visible": false
+    },
+    {
+      "class": "MSCTFIME UI",
+      "title": "MSCTFIME UI",
+      "visible": false
+    }
+  ],
+  "existingProductionProcessUntouched": true,
+  "scope": "startup/version/config/catalog only; previous feature QA reused"
+}

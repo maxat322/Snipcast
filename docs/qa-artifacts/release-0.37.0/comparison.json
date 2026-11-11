@@ -1,0 +1,177 @@
+{
+  "baseRelease": "0.36.15",
+  "baseCommit": "8357317d3e568dd99c6744e41aa00ad4a9c0c7e5",
+  "releaseUrl": "https://github.com/maxat322/Snipcast/releases/tag/0.36.15",
+  "targetVersion": "0.37.0",
+  "versionFields": [
+    "0.37.0",
+    "0.37.0",
+    "0.37.0",
+    "0.37.0",
+    "0.37.0",
+    "0.37.0"
+  ],
+  "comparison": "actual normalized on-disk contents, including untracked source files",
+  "changedSourceFiles": [
+    {
+      "path": "src-tauri/src/ai.rs",
+      "status": "modified"
+    },
+    {
+      "path": "src-tauri/src/capture_cursor.rs",
+      "status": "added"
+    },
+    {
+      "path": "src-tauri/src/capture_history.rs",
+      "status": "modified"
+    },
+    {
+      "path": "src-tauri/src/capture_keyboard.rs",
+      "status": "modified"
+    },
+    {
+      "path": "src-tauri/src/commands/applications.rs",
+      "status": "added"
+    },
+    {
+      "path": "src-tauri/src/commands/clipboard_windows.rs",
+      "status": "added"
+    },
+    {
+      "path": "src-tauri/src/commands/history.rs",
+      "status": "added"
+    },
+    {
+      "path": "src-tauri/src/commands/mod.rs",
+      "status": "added"
+    },
+    {
+      "path": "src-tauri/src/commands/translate.rs",
+      "status": "added"
+    },
+    {
+      "path": "src-tauri/src/data.rs",
+      "status": "modified"
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "path": "src-tauri/src/mouse_hotkeys.rs",
+      "status": "added"
+    },
+    {
+      "path": "src-tauri/src/paste_target.rs",
+      "status": "modified"
+    },
+    {
+      "path": "src-tauri/src/screenshot.rs",
+      "status": "modified"
+    },
+    {
+      "path": "src-tauri/src/suggestions_windows.rs",
+      "status": "modified"
+    },
+    {
+      "path": "src-tauri/src/text_suggestions.rs",
+      "status": "modified"
+    },
+    {
+      "path": "src/App.css",
+      "status": "modified"
+    },
+    {
+      "path": "src/App.tsx",
+      "status": "modified"
+    },
+    {
+      "path": "src/Settings.css",
+      "status": "modified"
+    },
+    {
+      "path": "src/SettingsApp.tsx",
+      "status": "modified"
+    },
+    {
+      "path": "src/capture/CaptureOverlay.tsx",
+      "status": "modified"
+    },
+    {
+      "path": "src/capture/CaptureShortcuts.tsx",
+      "status": "modified"
+    },
+    {
+      "path": "src/commands/ClipboardHistoryList.tsx",
+      "status": "added"
+    },
+    {
+      "path": "src/commands/CommandsApp.tsx",
+      "status": "added"
+    },
+    {
+      "path": "src/commands/CommandsSettings.tsx",
+      "status": "added"
+    },
+    {
+      "path": "src/commands/EmojiGrid.tsx",
+      "status": "added"
+    },
+    {
+      "path": "src/commands/commands.css",
+      "status": "added"
+    },
+    {
+      "path": "src/commands/model.ts",
+      "status": "added"
+    },
+    {
+      "path": "src/commands/useClipboardHistory.ts",
+      "status": "added"
+    },
+    {
+      "path": "src/components/CaptureActionHotkeyField.tsx",
+      "status": "modified"
+    },
+    {
+      "path": "src/components/HotkeyInput.tsx",
+      "status": "added"
+    },
+    {
+      "path": "src/components/PaletteFrame.tsx",
+      "status": "added"
+    },
+    {
+      "path": "src/components/SecondaryHotkey.tsx",
+      "status": "added"
+    },
+    {
+      "path": "src/components/ThemedSelect.tsx",
+      "status": "modified"
+    },
+    {
+      "path": "src/hotkeyFormat.ts",
+      "status": "modified"
+    },
+    {
+      "path": "src/main.tsx",
+      "status": "modified"
+    },
+    {
+      "path": "src/theme-overrides.css",
+      "status": "modified"
+    },
+    {
+      "path": "src/types.ts",
+      "status": "modified"
+    },
+    {
+      "path": "src/video/VideoApp.tsx",
+      "status": "modified"
+    },
+    {
+      "path": "src/video/video.css",
+      "status": "modified"
+    }
+  ]
+}

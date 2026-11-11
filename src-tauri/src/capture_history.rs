@@ -77,13 +77,24 @@ pub async fn snipcast_capture_history_open(id:String)->Result<OpenEntry,String> 
     }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
-pub async fn snipcast_capture_history_record(app:tauri::AppHandle,name:String,selection:Region,annotations:Option<Vec<serde_json::Value>>)->Result<String,String> {
+pub async fn snipcast_capture_history_record(app:tauri::AppHandle,name:String,selection:Region,annotations:Option<Vec<serde_json::Value>>,include_cursor:Option<bool>)->Result<String,String> {
     use tauri::Manager;
-    let source={let state=app.state::<Mutex<crate::screenshot::ScreenshotState>>();let state=state.lock().map_err(|e|e.to_string())?;
-        state.captures.iter().find(|c|c.file.file_name().is_some_and(|f|f.to_string_lossy()==name)).cloned()};
+    let (source,cursor)={let state=app.state::<Mutex<crate::screenshot::ScreenshotState>>();let state=state.lock().map_err(|e|e.to_string())?;
+        (state.captures.iter().find(|c|c.file.file_name().is_some_and(|f|f.to_string_lossy()==name)).cloned(),
+         if include_cursor.unwrap_or(false) {state.cursor_image.clone()} else {None})};
     tauri::async_runtime::spawn_blocking(move||{
         let annotations=annotations.unwrap_or_default();
-        if let Some(source)=source {let bytes=fs::read(source.file).map_err(|e|e.to_string())?;record_with_annotations(&bytes,(source.x,source.y),(source.width,source.height),selection,annotations)}
+        if let Some(source)=source {
+            let mut bytes=fs::read(source.file).map_err(|e|e.to_string())?;
+            if let Some(cursor)=cursor {
+                let mut image=image::load_from_memory(&bytes).map_err(|e|e.to_string())?.to_rgba8();
+                cursor.composite(&mut image)?;
+                let mut png=std::io::Cursor::new(Vec::new());
+                image.write_to(&mut png,image::ImageFormat::Png).map_err(|e|e.to_string())?;
+                bytes=png.into_inner();
+            }
+            record_with_annotations(&bytes,(source.x,source.y),(source.width,source.height),selection,annotations)
+        }
         else {let (entry,bytes)=image(&name)?;record_with_annotations(&bytes,(entry.origin_x,entry.origin_y),(entry.width,entry.height),selection,annotations)}
     }).await.map_err(|e|e.to_string())?
 }

@@ -109,10 +109,14 @@ html[data-app-theme="light"] .palette__item--depth-2 {
 }
 
 html[data-app-theme="light"] .palette__back {
+  border-color: #ccd3de;
+  background: #f2f2f6;
   color: #5a5a68;
 }
 
 html[data-app-theme="light"] .palette__back:hover {
+  border-color: #5164f2;
+  background: #e3e7ff;
   color: #12121a;
 }
 
@@ -512,7 +516,8 @@ html[data-app-theme="light"].settings-root .settings__danger:hover {
 .settings__templates-list,
 .settings__group-tags,
 .settings__filelist ul,
-.settings__templates-body {
+.settings__templates-body,
+:is(.commands__results,.commands__history,.commands__preview,.commands__content,.commands__emoji,.commands__actions,.commands .snip-select__menu) {
   scrollbar-width: thin;
   scrollbar-color: var(--snip-scroll-thumb) var(--snip-scroll-track);
 }
@@ -524,7 +529,8 @@ html[data-app-theme="light"].settings-root .settings__danger:hover {
 .settings__templates-list::-webkit-scrollbar,
 .settings__group-tags::-webkit-scrollbar,
 .settings__filelist ul::-webkit-scrollbar,
-.settings__templates-body::-webkit-scrollbar {
+.settings__templates-body::-webkit-scrollbar,
+:is(.commands__results,.commands__history,.commands__preview,.commands__content,.commands__emoji,.commands__actions,.commands .snip-select__menu)::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
@@ -536,7 +542,8 @@ html[data-app-theme="light"].settings-root .settings__danger:hover {
 .settings__templates-list::-webkit-scrollbar-track,
 .settings__group-tags::-webkit-scrollbar-track,
 .settings__filelist ul::-webkit-scrollbar-track,
-.settings__templates-body::-webkit-scrollbar-track {
+.settings__templates-body::-webkit-scrollbar-track,
+:is(.commands__results,.commands__history,.commands__preview,.commands__content,.commands__emoji,.commands__actions,.commands .snip-select__menu)::-webkit-scrollbar-track {
   background: var(--snip-scroll-track);
   border-radius: 999px;
 }
@@ -548,7 +555,8 @@ html[data-app-theme="light"].settings-root .settings__danger:hover {
 .settings__templates-list::-webkit-scrollbar-thumb,
 .settings__group-tags::-webkit-scrollbar-thumb,
 .settings__filelist ul::-webkit-scrollbar-thumb,
-.settings__templates-body::-webkit-scrollbar-thumb {
+.settings__templates-body::-webkit-scrollbar-thumb,
+:is(.commands__results,.commands__history,.commands__preview,.commands__content,.commands__emoji,.commands__actions,.commands .snip-select__menu)::-webkit-scrollbar-thumb {
   background: var(--snip-scroll-thumb);
   border-radius: 999px;
   border: 2px solid transparent;

@@ -7,7 +7,8 @@ type Geometry={x:number;y:number;width:number;height:number;monitors?:ScreenMoni
 export type HintMotion={move:((point:Pt)=>void)|null};
 type Props={actionKeys?:{save:string;pin:string;copy:string};info:Geometry|null;viewport:{w:number;h:number};session:number;
   cursor:RefObject<Pt|null>;motion:RefObject<HintMotion>;selected:boolean;
-  gesture?:string;editing:boolean;selectedShape:boolean;tool:ShapeKind|null;mode:"element"|"window"};
+  gesture?:string;editing:boolean;selectedShape:boolean;tool:ShapeKind|null;mode:"element"|"window";
+  cursorAvailable:boolean;cursorEnabled:boolean};
 const overlaps=(a:Rect,b:Rect)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
 
 export const CaptureShortcuts=memo(function CaptureShortcuts(p:Props) {
@@ -79,7 +80,9 @@ export const CaptureShortcuts=memo(function CaptureShortcuts(p:Props) {
       <div><kbd>Tab</kbd> элементы / окна <strong>{p.mode==="element"?"Элементы":"Окна"}</strong></div></>}
     {!p.editing&&(p.selected||!dragging)?row("Alt","центральные направляющие области"):null}
     {!p.editing&&p.selected?row("Alt + действие","оставить направляющие на снимке"):null}
-    {!p.editing&&!dragging?<>{row("− / +","Истории скриншотов: старее / новее")}{row("A","весь монитор под курсором")}{row("← ↑ ↓ →","курсор на 1 пиксель")}</>:null}
+    {!p.editing&&!dragging?<>{row("− / +","Истории скриншотов: старее / новее")}{row("A","весь экран")}
+      {p.cursorAvailable?row("P",p.cursorEnabled?"Выключить курсор":"Включить курсор"):null}
+      {row("← ↑ ↓ →","курсор на 1 пиксель")}</>:null}
     {row("Esc",dragging?(p.gesture==="draw"?"отменить рисование":"отменить выделение"):escape)}
   </div>;
 });

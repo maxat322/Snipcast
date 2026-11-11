@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import {CommandsApp} from "./commands/CommandsApp";
 import { SettingsApp } from "./SettingsApp";
 import { AiAgentApp } from "./aiagent/AiAgentApp";
 import { CaptureOverlay } from "./capture/CaptureOverlay";
@@ -19,8 +20,9 @@ import "./paletteSurface.css";
  * Скриншот живёт в едином окне "capture-0" на виртуальном рабочем столе,
  * закреплённые кропы — в окнах "pin-N".
  */
-function resolveUiKind(): "settings" | "aiagent" | "palette" | "capture" | "pin" | "pinmenu" | "update-notice" | "video-control" | "video-editor" | "text-suggestions" {
+function resolveUiKind(): "command-tool" | "settings" | "aiagent" | "palette" | "capture" | "pin" | "pinmenu" | "update-notice" | "video-control" | "video-editor" | "text-suggestions" {
   const q = new URLSearchParams(window.location.search).get("snipcast");
+  if (q === "command-tool") return "command-tool";
   if (q === "settings") return "settings";
   if(q==="text-suggestions")return q;
   if(q==="video-control"||q==="video-editor")return q;
@@ -57,6 +59,7 @@ function mount() {
   if (!root) return;
 
   const kind = resolveUiKind();
+  if(kind==="command-tool"){document.documentElement.classList.add("palette-root");ReactDOM.createRoot(root).render(<CommandsApp/>);return;}
   if(kind==="text-suggestions") { document.documentElement.classList.add("suggestions-root");ReactDOM.createRoot(root).render(<TextSuggestions/>);return; }
   if(kind==="video-control"||kind==="video-editor"){
     document.documentElement.classList.add("video-root");

@@ -88,9 +88,13 @@ pub struct TemplateRow {
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     #[serde(default)]
+    pub commands: crate::commands::Config,
+    #[serde(default)]
     pub text_suggestions: crate::text_suggestions::SuggestionsConfig,
     #[serde(default = "default_palette_hotkey")]
     pub palette_hotkey: String,
+    #[serde(default)]
+    pub palette_hotkey_secondary: String,
     #[serde(default = "default_autostart")]
     pub autostart: bool,
     #[serde(default = "default_ui_theme")]
@@ -100,6 +104,8 @@ pub struct AppConfig {
     // --- скриншоты ---
     #[serde(default = "default_screenshot_hotkey")]
     pub screenshot_hotkey: String,
+    #[serde(default)]
+    pub screenshot_hotkey_secondary: String,
     #[serde(default="default_save_action_hotkey")]
     pub screenshot_save_hotkey:String,
     #[serde(default="default_pin_action_hotkey")]
@@ -186,7 +192,7 @@ fn migrate_screenshot_defaults(cfg:&mut AppConfig)->bool {
         use std::str::FromStr;
         use tauri_plugin_global_shortcut::Shortcut;
         let target=Shortcut::from_str("Alt+PrintScreen").ok();
-        let occupied=cfg.screenshot_presets.iter().map(|p|p.hotkey.as_str()).chain([cfg.palette_hotkey.as_str(),cfg.screenshot_hotkey.as_str()])
+        let occupied=cfg.screenshot_presets.iter().map(|p|p.hotkey.as_str()).chain([cfg.palette_hotkey.as_str(),cfg.screenshot_hotkey.as_str(),cfg.palette_hotkey_secondary.as_str(),cfg.screenshot_hotkey_secondary.as_str()])
             .any(|h|!h.is_empty()&&Shortcut::from_str(h).ok()==target);
         if occupied {preset.hotkey.clear();cfg.screenshot_preset_notice="Alt+PrintScreen уже используется. Стандартный пресет добавлен без горячей клавиши.".into();}
         cfg.screenshot_presets.push(preset);
@@ -244,12 +250,15 @@ fn default_ai_model() -> String {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            commands: crate::commands::Config::default(),
             text_suggestions: crate::text_suggestions::SuggestionsConfig::default(),
             palette_hotkey: DEFAULT_PALETTE_HOTKEY.to_string(),
+            palette_hotkey_secondary: String::new(),
             autostart: true,
             theme: default_ui_theme(),
             palette_list_density: default_palette_list_density(),
             screenshot_hotkey: default_screenshot_hotkey(),
+            screenshot_hotkey_secondary: String::new(),
             screenshot_save_hotkey:default_save_action_hotkey(),
             screenshot_pin_hotkey:default_pin_action_hotkey(),
             screenshot_copy_hotkey:default_copy_action_hotkey(),
@@ -554,14 +563,22 @@ pub fn init_data_tree() -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) fn migrate_main_palette(cfg: &mut AppConfig) -> bool {
+    cfg.commands.items.remove("unified").is_some()
+}
+
 pub fn load_config() -> Result<AppConfig, String> {
     let p = config_path();
     if !p.exists() {
         return Ok(AppConfig::default());
     }
     let s = fs::read_to_string(&p).map_err(|e| e.to_string())?;
-    let mut cfg:AppConfig=serde_json::from_str(&s).map_err(|e|e.to_string())?;
-    if migrate_screenshot_defaults(&mut cfg){save_config(&cfg)?;}
+    let raw:serde_json::Value=serde_json::from_str(&s).map_err(|e|e.to_string())?;
+    let command_palette_retired = raw.get("commands").and_then(|v|v.get("hotkey")).is_some();
+    let mut cfg:AppConfig=serde_json::from_value(raw).map_err(|e|e.to_string())?;
+    let screenshot_migrated = migrate_screenshot_defaults(&mut cfg);
+    let palette_migrated = migrate_main_palette(&mut cfg);
+    if screenshot_migrated || palette_migrated || command_palette_retired { save_config(&cfg)?; }
     Ok(cfg)
 }
 
@@ -1228,6 +1245,19 @@ pub fn paths_dto(_config: &AppConfig) -> PathsDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn main_palette_migration_removes_only_experimental_shortcut() {
+        let mut cfg = AppConfig::default();
+        cfg.palette_hotkey = "Shift+Backslash".into();
+        cfg.commands.items.insert("unified".into(), crate::commands::ItemConfig {
+            hotkey: "Control+T".into(), ..Default::default()
+        });
+        let mut expected = cfg.clone();
+        expected.commands.items.remove("unified");
+        assert!(migrate_main_palette(&mut cfg));
+        assert_eq!(serde_json::to_value(&cfg).unwrap(), serde_json::to_value(&expected).unwrap());
+        assert!(!migrate_main_palette(&mut cfg));
+    }
 
     /// Отдельная папка данных на каждый прогон, чтобы тест не трогал реальный `C:\Snipcast`.
     fn setup_temp_data_dir(tag: &str) -> PathBuf {

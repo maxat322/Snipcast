@@ -1,3 +1,7 @@
+import {SecondaryHotkey} from "./components/SecondaryHotkey";
+import {HotkeyInput} from './components/HotkeyInput';
+import {defaults as commandDefaults} from "./commands/model";
+import {CommandsSettings} from "./commands/CommandsSettings";
 import {
   useCallback,
   useEffect,
@@ -41,6 +45,8 @@ const REPO_URL = "https://github.com/maxat322/Snipcast";
 // Match the new-user defaults in src-tauri/src/data.rs.
 const DEFAULT_SETTINGS_HOTKEYS = {
   paletteHotkey: "CommandOrControl+Shift+Backslash",
+  paletteHotkeySecondary: "",
+  screenshotHotkeySecondary: "",
   screenshotHotkey: "PrintScreen",
   screenshotSaveHotkey: "Enter",
   screenshotPinHotkey: "Space",
@@ -68,7 +74,7 @@ function updateStageLabel(stage: string): string {
 }
 const GROUP_COLORS = ["#5164f2", "#e8590c", "#20c997", "#be4bdb", "#339af0", "#fa5252"];
 
-type Section = "general" | "screenshot" | "ai" | "templates" | "variables" | "update";
+type Section = "commands" | "general" | "screenshot" | "ai" | "templates" | "variables" | "update";
 type GroupModalMode = "create" | "master" | null;
 
 type OcrModelsStatus = {
@@ -466,7 +472,7 @@ function pathsEqual(a: number[] | null, b: number[]): boolean {
 async function saveConfig(next: AppConfig, opts?: { skipPaletteHotkeyApply?: boolean }): Promise<void> {
   await invoke("snipcast_save_config", {
     incoming: next,
-    skip_palette_hotkey_apply: opts?.skipPaletteHotkeyApply ?? false,
+    skipPaletteHotkeyApply: opts?.skipPaletteHotkeyApply ?? false,
   });
 }
 
@@ -474,6 +480,15 @@ const NAV_WIDTH_KEY = "snipcast.settings.navWidth";
 
 export function SettingsApp() {
   const [section, setSection] = useState<Section>("general");
+  const [commandSection,setCommandSection]=useState("general");
+  useEffect(() => {
+    let active = true;
+    const consume = () => void invoke<string | null>("snipcast_commands_settings_target")
+      .then(target => { if (active && target === "commands") {setSection("commands");setCommandSection("general");} }).catch(() => {});
+    const off = listen("snipcast://commands-settings", consume);
+    void off.then(consume);
+    return () => { active = false; void off.then(f => f()); };
+  }, []);
   /** Ширина навигации: тянется сплиттером, запоминается между запусками. */
   const [navWidth, setNavWidth] = useState(() => {
     const saved = Number(window.localStorage.getItem(NAV_WIDTH_KEY));
@@ -1103,6 +1118,9 @@ export function SettingsApp() {
     }
     const tauri = hotkeyRecorder.record(e.nativeEvent);
     if (!tauri) return;
+    await saveHotkeyValue(tauri);
+  };
+  const saveHotkeyValue = async (tauri:string) => {
     const base = configRef.current;
     if (!base) return;
     const next = { ...base, paletteHotkey: tauri };
@@ -1111,6 +1129,7 @@ export function SettingsApp() {
       await saveConfig(next, { skipPaletteHotkeyApply: true });
       setConfig(next);
     } catch (err) {
+      setHotkeyDisplay(tauriHotkeyToDisplay(base.paletteHotkey));
       showError(err);
     }
   };
@@ -1137,6 +1156,9 @@ export function SettingsApp() {
     }
     const tauri = hotkeyRecorder.record(e.nativeEvent);
     if (!tauri) return;
+    await saveScreenshotHotkeyValue(tauri);
+  };
+  const saveScreenshotHotkeyValue = async (tauri:string) => {
     const base = configRef.current;
     if (!base) return;
     const next = { ...base, screenshotHotkey: tauri };
@@ -1146,6 +1168,7 @@ export function SettingsApp() {
       await saveConfig(next, { skipPaletteHotkeyApply: true });
       setConfig(next);
     } catch (err) {
+      setScreenshotHotkeyDisplay(tauriHotkeyToDisplay(base.screenshotHotkey));
       showError(err);
     }
   };
@@ -1184,8 +1207,9 @@ export function SettingsApp() {
     if (!base || resettingHotkeys) return;
     setResettingHotkeys(true);
     try {
-      await saveConfig({ ...base, ...DEFAULT_SETTINGS_HOTKEYS });
-      setConfig(current => current ? { ...current, ...DEFAULT_SETTINGS_HOTKEYS } : current);
+      const resetCommands=(commands:typeof commandDefaults)=>{const items={...commands.items};delete items.unified;return {...commands,items}};
+      await saveConfig({ ...base, ...DEFAULT_SETTINGS_HOTKEYS, commands:resetCommands(base.commands??commandDefaults) });
+      setConfig(current => current ? { ...current, ...DEFAULT_SETTINGS_HOTKEYS,commands:resetCommands(current.commands??commandDefaults) } : current);
       setHotkeyDisplay(tauriHotkeyToDisplay(DEFAULT_SETTINGS_HOTKEYS.paletteHotkey));
       setScreenshotHotkeyDisplay(tauriHotkeyToDisplay(DEFAULT_SETTINGS_HOTKEYS.screenshotHotkey));
     } catch (error) {
@@ -1297,14 +1321,16 @@ export function SettingsApp() {
 
   const savePresetsNow = async (nextPresets: ScreenshotPreset[]) => {
     const base = configRef.current;
-    if (!base) return;
+    if (!base) return false;
     const next = { ...base, screenshotPresets: nextPresets };
     try {
       await saveConfig(next, { skipPaletteHotkeyApply: true });
       setConfig(next);
+      return true;
     } catch (e) {
       // Дубликаты комбинаций и прочие ошибки валидации бэкенда — сюда.
       showError(e);
+      return false;
     }
   };
 
@@ -1316,9 +1342,13 @@ export function SettingsApp() {
     }
     const tauri = hotkeyRecorder.record(e.nativeEvent);
     if (!tauri) return;
+    await savePresetHotkeyValue(idx,tauri);
+  };
+  const savePresetHotkeyValue = async (idx:number,tauri:string) => {
+    const previous=presetsDraft[idx]?.hotkey??"";
     const nextPresets = presetsDraft.map((p, j) => (j === idx ? { ...p, hotkey: tauri } : p));
     setPresetsDraft(nextPresets);
-    await savePresetsNow(nextPresets);
+    if(!await savePresetsNow(nextPresets))setPresetsDraft(current=>current.map((p,j)=>j===idx?{...p,hotkey:previous}:p));
     // Сохранение перерегистрировало комбинации. Если поле всё ещё в фокусе —
     // снимем снова, чтобы нажатия при записи не запускали чужие пресеты.
     if (presetCapturingRef.current) {
@@ -1327,9 +1357,10 @@ export function SettingsApp() {
   };
 
   const clearPresetHotkey = async (idx: number) => {
+    const previous=presetsDraft[idx]?.hotkey??"";
     const nextPresets = presetsDraft.map((p, j) => (j === idx ? { ...p, hotkey: "" } : p));
     setPresetsDraft(nextPresets);
-    await savePresetsNow(nextPresets);
+    if(!await savePresetsNow(nextPresets))setPresetsDraft(current=>current.map((p,j)=>j===idx?{...p,hotkey:previous}:p));
   };
 
   // ------------------------------------------------------------------
@@ -1856,6 +1887,7 @@ export function SettingsApp() {
             <IconSliders className="settings__nav-icon" />
             Основные
           </button>
+          <button className={section === "commands" ? "settings__nav-item is-active" : "settings__nav-item"} onClick={()=>{setSection("commands");setCommandSection("general")}}><IconLayers className="settings__nav-icon"/>Команды</button>
           <button
             type="button"
             className={section === "screenshot" ? "settings__nav-item is-active" : "settings__nav-item"}
@@ -1919,6 +1951,7 @@ export function SettingsApp() {
           </div>
         ) : null}
 
+        {section === "commands" && config ? <CommandsSettings section={commandSection} onNavigate={target=>{if(target==='templates')setSection('templates');else if(target==='screenshot'||target==='video'||target.startsWith('preset:'))setSection('screenshot');else if(target==='ai')setSection('ai');else if(target==='suggestions')setSection('general');else setCommandSection(target)}} config={config} onSave={async patch=>{const next={...config,...patch};setConfig(next);try{await saveConfig(next);}catch(e){setConfig(current=>current===next?config:current);throw e;}}}/> : null}
         {section === "general" ? (
           <div className="settings__panel">
             <div className="settings__group">
@@ -1989,7 +2022,8 @@ export function SettingsApp() {
               </div>
               <div className="settings__option settings__option--hotkey">
                 <span className="settings__option-label">Палитра шаблонов</span>
-                <input
+                <div className="settings__hotkey-pair">
+                <HotkeyInput onRecordMouse={saveHotkeyValue}
                   type="text"
                   readOnly
                   className="settings__hotkey-input"
@@ -2005,13 +2039,22 @@ export function SettingsApp() {
                   spellCheck={false}
                   aria-label="Запись хоткея палитры"
                 />
-                <ClearHotkeyButton label="Палитра шаблонов" disabled={!hotkeyDisplay.trim() || resettingHotkeys}
-                  onClick={() => void onClearPaletteHotkey()}/>
+                <SecondaryHotkey primaryClear={<ClearHotkeyButton label="Палитра шаблонов" disabled={!hotkeyDisplay.trim() || resettingHotkeys}
+                  onClick={() => void onClearPaletteHotkey()}/>} label="Палитра шаблонов" kind="палитры" value={config?.paletteHotkeySecondary ?? ""} disabled={resettingHotkeys}
+                  pause={onHotkeyFocus} resume={onHotkeyBlur}
+                  onSave={async value => {
+                    const base=configRef.current;if(!base)return false;
+                    const next={...base,paletteHotkeySecondary:value};
+                    try {await saveConfig(next, {skipPaletteHotkeyApply:document.activeElement?.getAttribute('aria-label') === 'Второе сочетание палитры'});setConfig(next);return true;}
+                    catch(error){showError(error);return false;}
+                  }}/>
+                </div>
               </div>
 
               <div className="settings__option settings__option--hotkey">
                 <span className="settings__option-label">Скриншот</span>
-                <input
+                <div className="settings__hotkey-pair">
+                <HotkeyInput onRecordMouse={saveScreenshotHotkeyValue}
                   type="text"
                   readOnly
                   className="settings__hotkey-input"
@@ -2031,8 +2074,16 @@ export function SettingsApp() {
                   spellCheck={false}
                   aria-label="Запись хоткея скриншота"
                 />
-                <ClearHotkeyButton label="Скриншот" disabled={!screenshotHotkeyDisplay.trim() || resettingHotkeys}
-                  onClick={() => void onClearScreenshotHotkey()}/>
+                <SecondaryHotkey primaryClear={<ClearHotkeyButton label="Скриншот" disabled={!screenshotHotkeyDisplay.trim() || resettingHotkeys}
+                  onClick={() => void onClearScreenshotHotkey()}/>} label="Скриншот" kind="скриншота" value={config?.screenshotHotkeySecondary ?? ""} disabled={resettingHotkeys}
+                  pause={onScreenshotHotkeyFocus} resume={onScreenshotHotkeyBlur}
+                  onSave={async value => {
+                    const base=configRef.current;if(!base)return false;
+                    const next={...base,screenshotHotkeySecondary:value};
+                    try {await saveConfig(next, {skipPaletteHotkeyApply:document.activeElement?.getAttribute('aria-label') === 'Второе сочетание скриншота'});setConfig(next);return true;}
+                    catch(error){showError(error);return false;}
+                  }}/>
+                </div>
               </div>
               {config?([ ["Скриншот: сохранить в файл","screenshotSaveHotkey","Enter"],["Скриншот: закрепить","screenshotPinHotkey","Space"],["Скриншот: копировать в буфер","screenshotCopyHotkey","C"] ] as const).map(([label,field,fallback])=>
                 <CaptureActionHotkeyField key={field} label={label} value={config[field]??fallback} disabled={resettingHotkeys} onSave={async value=>{
@@ -2317,7 +2368,7 @@ export function SettingsApp() {
                             spellCheck={false}
                             aria-label="Название пресета"
                           />
-                          <input
+                          <HotkeyInput onRecordMouse={value=>savePresetHotkeyValue(i,value)}
                             type="text"
                             readOnly
                             className="settings__hotkey-input settings__preset-hotkey"

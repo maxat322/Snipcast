@@ -26,6 +26,7 @@ for action, field in [('save', 'screenshotSaveHotkey'), ('pin', 'screenshotPinHo
     assert re.search(rf'fn default_{action}_action_hotkey\(\).*?"{DEFAULTS[field]}"', native, re.S)
 
 WRAP = """() => {
+ window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener:()=>{}};
  const original=window.__TAURI_INTERNALS__.invoke;
  qa.saves=[];
  window.__TAURI_INTERNALS__.invoke=async(command,args)=>{
@@ -43,6 +44,7 @@ with sync_playwright() as p:
     for theme in ('dark', 'light'):
         for width in (950, 720):
             config = literal('CONFIG')
+            config['commands'] = {'hotkey':'Control+Alt+F9','items':{'emoji':{'enabled':True,'alias':'','hotkey':'Alt+E'}}}
             config.update(theme=theme, paletteHotkey='Shift+Backslash', screenshotHotkey='Alt+F8',
                           screenshotSaveHotkey='Control+K', screenshotPinHotkey='Control+P', screenshotCopyHotkey='Control+Y')
             page = browser.new_page(viewport={'width': width, 'height': 950})
@@ -50,14 +52,20 @@ with sync_playwright() as p:
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.add_init_script(f'({literal("BRIDGE")})({json.dumps(config)});({WRAP})();')
             page.goto('http://127.0.0.1:1420/?snipcast=settings')
+            page.get_by_role('button', name='Основные', exact=True).click()
             group = page.get_by_role('group', name='Горячие клавиши', exact=True)
             rows = group.locator('.settings__option--hotkey')
             expect(rows).to_have_count(5, timeout=15000)
             assert rows.locator('.settings__option-label').all_text_contents() == LABELS
             assert rows.locator('.settings__option-label').evaluate_all(
                 'labels=>labels.every(e=>getComputedStyle(e).fontWeight==="400")')
-            clear = rows.get_by_role('button')
+            clear = rows.get_by_role('button', name=re.compile('^Очистить горячую клавишу:'))
             expect(clear).to_have_count(5)
+            for label,kind in [('Палитра шаблонов','палитры'),('Скриншот','скриншота')]:
+                add=page.get_by_role('button',name='Добавить второе сочетание: '+label,exact=True)
+                remove=page.get_by_role('button',name='Очистить горячую клавишу: '+label,exact=True)
+                assert add.bounding_box()['x'] < remove.bounding_box()['x']
+
             assert clear.all_text_contents() == ['', '', '', '', '']
             assert clear.locator('svg').count() == 5
             for i, field in enumerate(DEFAULTS):
@@ -77,7 +85,7 @@ with sync_playwright() as p:
             page.evaluate('qa.holdSave=false;qa.releaseSave()')
             expect(reset).to_be_enabled()
             restored = page.evaluate('qa.config')
-            assert restored == {**config, **DEFAULTS}
+            assert restored == {**config, **DEFAULTS, 'paletteHotkeySecondary':'', 'screenshotHotkeySecondary':'', 'commands':config['commands']}
             assert page.evaluate('qa.saves.length') == before_saves + 1, 'Reset must save all keys together'
             expect(rows.locator('input').nth(2)).to_have_value('Enter')
             expect(rows.locator('input').nth(3)).to_have_value('Space')
@@ -113,10 +121,57 @@ with sync_playwright() as p:
                 assert g['inputRight'] <= g['buttonX'] and g['buttonRight'] <= g['rowRight'] + 1
                 assert g['labelRight'] <= g['inputX'] or g['labelBottom'] <= g['inputY']
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            for label,kind,field,key in [('Палитра шаблонов','палитры','paletteHotkeySecondary','Control+Alt+F10'),('Скриншот','скриншота','screenshotHotkeySecondary','Alt+F11')]:
+                first = page.get_by_label('Запись хоткея '+kind,exact=True)
+                original = first.input_value()
+                add = page.get_by_role('button',name='Добавить второе сочетание: '+label,exact=True)
+                add.click()
+                second = page.get_by_label('Второе сочетание '+kind,exact=True)
+                expect(second).to_be_focused()
+                second.press(key)
+                expect(second).not_to_have_value('')
+                second.blur()
+                page.wait_for_function('field=>Boolean(qa.config[field])',arg=field)
+                assert first.input_value()==original
+                assert abs(first.bounding_box()['y']-second.bounding_box()['y'])<1
+                row=first.locator('xpath=ancestor::div[contains(@class,"settings__option--hotkey")]')
+                primary_clear=page.get_by_role('button',name='Очистить горячую клавишу: '+label,exact=True)
+                assert second.bounding_box()['x'] < primary_clear.bounding_box()['x']
+                boxes=row.locator('input,button').evaluate_all('es=>es.map(e=>{const r=e.getBoundingClientRect();return {x:r.x,right:r.right}})')
+                assert all(a['right']<=b['x'] for a,b in zip(boxes,boxes[1:])),boxes
+                assert boxes[-1]['right']<=row.bounding_box()['x']+row.bounding_box()['width']+1
+                saved=second.input_value()
+                page.evaluate('qa.failNext=true')
+                second.click();second.press('Control+F12');second.blur()
+                expect(page.locator('.settings__toast--error')).to_contain_text('Не удалось сохранить')
+                expect(second).to_have_value(saved)
+                if field=='screenshotHotkeySecondary':
+                    second.click();second.dispatch_event('mousedown',{'button':3,'buttons':8,'altKey':True});second.blur()
+                    expect(second).to_have_value('Alt+Мышь 4')
+                remove=page.get_by_role('button',name=f'Очистить горячую клавишу: {label} (второе сочетание)',exact=True)
+                page.evaluate('qa.failNext=true');remove.click()
+                expect(second).to_be_visible()
+                remove.click();expect(add).to_be_visible()
+                assert page.evaluate('field=>qa.config[field]',field)==''
+                add.click();second.press(key);second.blur();expect(second).not_to_have_value('')
+            page.locator('.settings__toast--error').wait_for(state='hidden')
+            group.scroll_into_view_if_needed()
             page.screenshot(path=str(OUT / f'{theme}-{width}.png'))
+            saved_config=page.evaluate('structuredClone(qa.config)')
+            reopened=browser.new_page(viewport={'width':width,'height':950})
+            reopened.add_init_script(f'({literal("BRIDGE")})({json.dumps(saved_config)});({WRAP})();')
+            reopened.goto('http://127.0.0.1:1420/?snipcast=settings')
+            reopened.get_by_role('button',name='Основные',exact=True).click()
+            expect(reopened.get_by_label('Второе сочетание палитры',exact=True)).not_to_have_value('')
+            expect(reopened.get_by_label('Второе сочетание скриншота',exact=True)).not_to_have_value('')
+            reopened.close()
+            reset.click()
+            expect(page.get_by_label('Второе сочетание палитры',exact=True)).to_have_count(0)
+            expect(page.get_by_label('Второе сочетание скриншота',exact=True)).to_have_count(0)
+            assert page.evaluate('qa.config.paletteHotkeySecondary=== "" && qa.config.screenshotHotkeySecondary=== ""')
             assert not errors, errors
             results.append(dict(theme=theme, width=width, labels=True, icons=True, clearAllFive=True,
-                                resetDefaults=True, preservesOtherSettings=True, saveFailure=True, recording=True, noOverlap=True))
+                                resetDefaults=True, preservesOtherSettings=True, saveFailure=True, recording=True, secondaryKeyboardAndMouse=True, secondaryRemoval=True, secondaryFailure=True, secondaryReopen=True, noOverlap=True))
             page.close()
     browser.close()
 (OUT / 'results.json').write_text(json.dumps(results, indent=2), encoding='utf-8')

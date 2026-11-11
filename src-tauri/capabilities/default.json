@@ -12,7 +12,8 @@
     "pinmenu",
     "update-notice",
     "video-control",
-    "video-editor"
+    "video-editor",
+    "command-tool"
   ],
   "permissions": [
     "core:default",

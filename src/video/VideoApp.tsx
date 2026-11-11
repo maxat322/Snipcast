@@ -127,11 +127,20 @@ export function VideoEditor(){
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(cropOn&&e.key==="Escape"){e.preventDefault();cancelCrop();return;}if(cropOn&&e.key==="Enter"){e.preventDefault();applyCrop();return;}
     if(e.target instanceof HTMLElement&&e.target.closest("input,select,button"))return;
     if(e.code==="Space"){e.preventDefault();void togglePlay();}if(e.key==="Escape"&&!busy)close();};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);});
+  const exportOptions=()=>({startMs:Math.round(start*1000),endMs:Math.round(end*1000),...pixels,format,quality,gifWidth,gifFps});
   const saveVideo=async(loc?:{name:string;path:string})=>{
     if(!status||!ready||busy||cropOn)return;setError("");video.current?.pause();setDialogBusy(true);
     try{const path=loc?await invoke<string>("snipcast_capture_save_path",{dir:loc.path,ext:format}):await save({defaultPath:`Запись ${new Date().toISOString().slice(0,10)}.${format}`,filters:[{name:format==="gif"?"GIF-анимация":"Видео MP4",extensions:[format]}]});
       if(!path)return;
-      await invoke<string>("snipcast_video_export",{path,options:{startMs:Math.round(start*1000),endMs:Math.round(end*1000),...pixels,format,quality,gifWidth,gifFps}});await getCurrentWindow().close();
+      await invoke<string>("snipcast_video_export",{path,options:exportOptions()});await getCurrentWindow().close();
+    }catch(e){setError(String(e));}finally{setDialogBusy(false);}
+  };
+  const copyLink=async()=>{
+    if(!status||!ready||busy||cropOn)return;setError("");video.current?.pause();setDialogBusy(true);
+    try{const path=await invoke<string>("snipcast_video_link_prepare",{ext:format});
+      await invoke<string>("snipcast_video_export",{path,options:exportOptions()});
+      await invoke<string>("snipcast_video_link_publish",{path});
+      await getCurrentWindow().close();
     }catch(e){setError(String(e));}finally{setDialogBusy(false);}
   };
   saveAction.current=saveVideo;
@@ -208,7 +217,7 @@ export function VideoEditor(){
     <footer className="video-export"><label>Формат <span className="video-format">{["mp4","gif"].map(f=><button key={f} aria-pressed={format===f} disabled={busy} onClick={()=>{setFormat(f);}}>{f.toUpperCase()}</button>)}</span></label>
       {format==="mp4"?<label>Качество <ThemedSelect label="Качество видео" value={quality} disabled={busy} onChange={setQuality} options={[{value:"small",label:"Компактно"},{value:"balanced",label:"Баланс"},{value:"sharp",label:"Чёткий текст"},{value:"best",label:"Лучшее"}]}/></label>:<><label>Ширина <ThemedSelect label="Ширина GIF" value={String(gifWidth)} disabled={busy} onChange={v=>setGifWidth(Number(v))} options={[480,640,800,960].map(w=>({value:String(w),label:String(w)}))}/></label><label>Частота <ThemedSelect label="Частота GIF" value={String(gifFps)} disabled={busy} onChange={v=>setGifFps(Number(v))} options={[{value:"10",label:"10 кадров/с"},{value:"15",label:"15 кадров/с"}]}/></label></>}
       <span className="video-export__size">{format==="mp4"?(quality==="best"?"Размер зависит от видео":`≈ ${size(estimate)}`):"GIF без звука"}</span>
-      <div className="video-save-wrap"><button className="video-save" disabled={!ready||busy||cropOn||selected<.1} title="Нажмите для сохранения, удерживайте для быстрых мест" onPointerEnter={quickHover.enter} onPointerLeave={quickHover.leave} onPointerDown={savePointerDown} onClick={saveClick}><VideoIcon name="save"/>{status?.phase==="exporting"?`Сохранение ${status.exportPercent}%`:dialogBusy?"Сохранение…":`Сохранить ${format.toUpperCase()}`}</button>{quickOpen?<div className="video-quick" onPointerEnter={quickHover.menuEnter} onPointerLeave={quickHover.leave} role="menu" aria-label="Быстрые места сохранения">{config?.screenshotQuickLocations?.length?config.screenshotQuickLocations.map((loc,i)=><button type="button" role="menuitem" key={`${loc.path}-${i}`} data-video-quick={i} className={hoverQuick===i?"is-hover":""} onClick={()=>void saveVideo(loc)}><strong>{loc.name}</strong><span>{loc.path}</span></button>):<div className="video-quick__empty">Места не настроены</div>}</div>:null}</div>
+      <div className="video-save-wrap"><button type="button" className="video-link" disabled={!ready||busy||cropOn||selected<.1} onClick={()=>void copyLink()}>Скопировать ссылку на файл</button><button className="video-save" disabled={!ready||busy||cropOn||selected<.1} title="Нажмите для сохранения, удерживайте для быстрых мест" onPointerEnter={quickHover.enter} onPointerLeave={quickHover.leave} onPointerDown={savePointerDown} onClick={saveClick}><VideoIcon name="save"/>{status?.phase==="exporting"?`Сохранение ${status.exportPercent}%`:dialogBusy?"Сохранение…":`Сохранить ${format.toUpperCase()}`}</button>{quickOpen?<div className="video-quick" onPointerEnter={quickHover.menuEnter} onPointerLeave={quickHover.leave} role="menu" aria-label="Быстрые места сохранения">{config?.screenshotQuickLocations?.length?config.screenshotQuickLocations.map((loc,i)=><button type="button" role="menuitem" key={`${loc.path}-${i}`} data-video-quick={i} className={hoverQuick===i?"is-hover":""} onClick={()=>void saveVideo(loc)}><strong>{loc.name}</strong><span>{loc.path}</span></button>):<div className="video-quick__empty">Места не настроены</div>}</div>:null}</div>
       {status?.phase==="exporting"?<button onClick={()=>void invoke("snipcast_video_cancel_export")}>Отменить сохранение</button>:null}
     </footer>
     {(error||status?.error)?<div className="video-message video-message--error" role="alert">{error||status?.error}</div>:null}

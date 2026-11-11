@@ -146,7 +146,7 @@ fn fit_window_position(app: &AppHandle, bx: i32, by: i32, bw: u32, bh: u32) -> P
 /// Показать окно чата: существующее — просто показать (позицию не трогаем),
 /// новое — создать без рамки, скрытым и сразу в нужной позиции под кнопкой
 /// «ИИ Агент», чтобы окно не мигало и не «переезжало» после появления.
-fn create_or_show_ai_window(app: &AppHandle, bx: i32, by: i32, bw: u32, bh: u32) {
+pub(crate) fn create_or_show_ai_window(app: &AppHandle, bx: i32, by: i32, bw: u32, bh: u32) {
     if let Some(w) = app.get_webview_window(AI_WINDOW_LABEL) {
         let _ = w.show();
         let _ = w.set_focus();

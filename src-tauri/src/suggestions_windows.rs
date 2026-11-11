@@ -440,14 +440,28 @@ struct Rect {
 }
 // Same 12 CSS pixels as the ordinary palette. Clip the HWND too: CSS alone
 // does not clip the opaque WebView host or remove Windows' light frame.
-unsafe fn apply_popup_frame(hwnd: HWND, width: i32, height: i32, scale: f64) {
+pub(crate) unsafe fn apply_popup_frame(hwnd: HWND, width: i32, height: i32, scale: f64) {
     use windows_sys::Win32::Graphics::Dwm::DwmSetWindowAttribute;
     let css_corners = 1u32;
     let no_border = 0xffff_fffeu32;
     DwmSetWindowAttribute(hwnd, 33, &css_corners as *const _ as _, 4);
     DwmSetWindowAttribute(hwnd, 34, &no_border as *const _ as _, 4);
     let diameter = (24. * scale).round() as i32;
-    let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter);
+    // Resizable undecorated Tauri windows reserve invisible native insets for
+    // their shadow. Clip to the WebView client area, not those outer insets:
+    // otherwise SetWindowRgn exposes a light Windows frame around the palette.
+    let mut client: RECT = std::mem::zeroed();
+    let mut outer: RECT = std::mem::zeroed();
+    let mut origin = POINT { x: 0, y: 0 };
+    let (left, top, right, bottom) = if GetClientRect(hwnd, &mut client) != 0
+        && GetWindowRect(hwnd, &mut outer) != 0
+        && ClientToScreen(hwnd, &mut origin) != 0
+    {
+        let x = origin.x - outer.left;
+        let y = origin.y - outer.top;
+        (x, y, x + client.right, y + client.bottom)
+    } else { (0, 0, width, height) };
+    let region = CreateRoundRectRgn(left, top, right + 1, bottom + 1, diameter, diameter);
     if !region.is_null() && SetWindowRgn(hwnd, region, 1) == 0 {
         DeleteObject(region);
     }

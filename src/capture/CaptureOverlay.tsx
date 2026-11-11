@@ -40,6 +40,7 @@ type PresetInfo = {
 };
 
 type CaptureInfo = {
+  cursorImage?: {x:number;y:number;width:number;height:number;png:string} | null;
   videoSelection?:boolean;
   sessionId?:string;
   monitors?:ScreenMonitor[];
@@ -360,6 +361,9 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
 
   const [info, setInfo] = useState<CaptureInfo | null>(null);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const [cursorEnabled,setCursorEnabled]=useState(false);
+  const cursorEnabledRef=useRef(false);
+  const cursorImageRef=useRef<HTMLImageElement|null>(null);
   const [sourcePlacement,setSourcePlacement]=useState<Rect|null>(null);
   const sourcePlacementRef=useRef<Rect|null>(null);sourcePlacementRef.current=sourcePlacement;
   const [altHeld,setAltHeld]=useState(false);const altHeldRef=useRef(false);
@@ -550,7 +554,8 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     const annotations=transformAnnotations(textToolRef.current.commit(),scale,{x:-(b?.x??0)*scale,y:-(b?.y??0)*scale},true)
       .map((shape,index)=>({...shape,id:index+1}));
     return {name:historySourceId.current??i.imageName,selection:{x:Math.max(0,Math.round((r.x-(b?.x??0))*scale)),y:Math.max(0,Math.round((r.y-(b?.y??0))*scale)),
-      width:Math.max(1,Math.round(r.w*scale)),height:Math.max(1,Math.round(r.h*scale))},annotations};
+      width:Math.max(1,Math.round(r.w*scale)),height:Math.max(1,Math.round(r.h*scale))},annotations,
+      includeCursor:!!i.cursorImage&&cursorEnabledRef.current};
   };
   const persistHistory=async(context:ReturnType<typeof historyContext>)=>{if(!context)return;
     try{await invoke("snipcast_capture_history_record",context);}catch(err){console.error("[Snipcast] screenshot history",err);}
@@ -582,7 +587,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         const placement={x:(view.w-entry.width*fit)/2,y:(view.h-entry.height*fit)/2,w:entry.width*fit,h:entry.height*fit};
         sourcePlacementRef.current=placement;setSourcePlacement(placement);setK(1/fit);
         if(historyUrl.current)URL.revokeObjectURL(historyUrl.current);historyUrl.current=url;
-        historySourceId.current=entry.id;setInfo({...currentCapture.current!.info!,candidates:[],preset:undefined});setImgUrl(url);
+        historySourceId.current=entry.id;setInfo({...currentCapture.current!.info!,candidates:[],preset:undefined,cursorImage:null});setImgUrl(url);
         scene.reset();
         setShapes(transformAnnotations(entry.annotations??[],fit,placement).map(shape=>({...shape,id:idSeqRef.current++})));
         setTool(null);setSelectedId(null);setSelecting(false);
@@ -618,6 +623,13 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         await candidatesListenerRef.current;
         const i = await invoke<CaptureInfo>("snipcast_capture_info");
         const buf = await invoke<ArrayBuffer>("snipcast_capture_image_data", { name: i.imageName });
+        let cursorImage:HTMLImageElement|null=null;
+        if(i.cursorImage){
+          cursorImage=new Image();cursorImage.src=`data:image/png;base64,${i.cursorImage.png}`;
+          try{await cursorImage.decode();}catch{cursorImage=null;i.cursorImage=null;}
+        }
+        if (dead) return;
+        cursorImageRef.current=cursorImage;
         objectUrl = URL.createObjectURL(new Blob([buf], { type: "image/png" }));
         if (dead) return;
         setInfo({ ...i, candidates: mergeCandidates(i.candidates ?? [], pendingCandidatesRef.current.get(i.imageName) ?? []) });
@@ -671,6 +683,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
       cancelAnimationFrame(pointerRafRef.current); pointerRafRef.current = 0;
       sampleRef.current = null; setPixelSource(null);
       setInfo(null); setDetectionMode("element"); setColorFormat("hex");
+      cursorEnabledRef.current=false;setCursorEnabled(false);cursorImageRef.current=null;
       infoRef.current = null; pendingCandidatesRef.current.clear();
       setDraft(null); draftRef.current=null; strokeSamples.current=[]; lastGesturePoint.current=null;
       scene.reset();
@@ -767,6 +780,10 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
       const width=Math.min(cvs.width,img.naturalWidth-x),height=Math.min(cvs.height,img.naturalHeight-y);
       ctx.drawImage(img,x,y,width,height,0,0,width,height);
     }else{ctx.fillStyle="#8a8a96";ctx.fillRect(0,0,cvs.width,cvs.height);}
+    const cursor=infoRef.current?.cursorImage, cursorImage=cursorImageRef.current;
+    if(cursorEnabledRef.current&&cursor&&cursorImage){
+      ctx.drawImage(cursorImage,cursor.x-Math.round((r.x-(b?.x??0))*kw),cursor.y-Math.round((r.y-(b?.y??0))*kw));
+    }
     ctx.scale(kw,kw);ctx.translate(-r.x,-r.y);
     ctx.save();
     ctx.beginPath();
@@ -812,21 +829,21 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
     finally { setBusy(false); }
   };
 
+  const ocrRegion = () => {
+    const r=selRef.current,inf=infoRef.current,b=sourcePlacementRef.current,scale=kRef.current;
+    if(!r)return null;
+    return {label:inf?.label??"",historyId:historySourceId.current,
+      x:Math.max(0,Math.round((r.x-(b?.x??0))*scale)),y:Math.max(0,Math.round((r.y-(b?.y??0))*scale)),
+      width:Math.max(1,Math.round(r.w*scale)),height:Math.max(1,Math.round(r.h*scale))};
+  };
+
   const runOcr = useCallback(
     async (opts?: { closeOnSuccess?: boolean }) => {
-      const r = selRef.current;
-      const inf = infoRef.current;
-      if (!r || busy) return;
+      const region = ocrRegion();
+      if (!region || busy) return;
       setBusy(true);
       setOcrLoading(true);
       try {
-        const region = {
-          label: inf?.label ?? "",
-          x: Math.max(0, Math.round(r.x * kRef.current)),
-          y: Math.max(0, Math.round(r.y * kRef.current)),
-          width: Math.max(1, Math.round(r.w * kRef.current)),
-          height: Math.max(1, Math.round(r.h * kRef.current)),
-        };
         if (demo) {
           console.log("[demo] snipcast_ocr_region", region);
           showToast("ok", "Текст скопирован");
@@ -849,12 +866,10 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   );
 
   const runSum=async()=>{
-    const r=selRef.current,inf=infoRef.current;if(!r||busyRef.current)return;
+    const region=ocrRegion();if(!region||busyRef.current)return;
     setBusy(true);setOcrLoading(true);
     try{
-      const text=demo?"12,50 7,25":await invoke<string>("snipcast_ocr_region",{
-        label:inf?.label??"",x:Math.max(0,Math.round(r.x*kRef.current)),y:Math.max(0,Math.round(r.y*kRef.current)),
-        width:Math.max(1,Math.round(r.w*kRef.current)),height:Math.max(1,Math.round(r.h*kRef.current))});
+      const text=demo?"12,50 7,25":await invoke<string>("snipcast_ocr_region",region);
       const result=sumNumbers(text);if(!result){showToast("error","Числа не найдены");return;}
       if(demo)await navigator.clipboard.writeText(result.sum);else await invoke("snipcast_clipboard_write_text",{text:result.sum});
       showToast("ok",`Сумма: ${result.sum}`);
@@ -1479,6 +1494,14 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
   const keyActions=useRef({copy:runCopy,save:saveWithDialog,pin:runPin,ocr:runOcr,sum:runSum,ai:runAiAgent,video:startVideo});
   keyActions.current={copy:runCopy,save:saveWithDialog,pin:runPin,ocr:runOcr,sum:runSum,ai:runAiAgent,video:startVideo};
 
+  useEffect(()=>{
+    const stop=listen<{action:'save'|'copy'|'pin';alt:boolean}>('snipcast://capture-mouse-action',({payload})=>{
+      const focused=document.activeElement;
+      if(busyRef.current||!selRef.current||dragRef.current||textToolRef.current.gestureRef.current||focused?.matches('input,textarea,[contenteditable=true]')||payload.action==='pin'&&pinEditorRef.current||infoRef.current?.videoSelection)return;
+      altHeldRef.current=payload.alt;setAltHeld(payload.alt);
+      void keyActions.current[payload.action]();
+    });return()=>{void stop.then(off=>off())};
+  },[]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const text = textToolRef.current;
@@ -1509,6 +1532,12 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         const p=lastGesturePoint.current;window.dispatchEvent(new PointerEvent("pointermove",{clientX:p.x,clientY:p.y,shiftKey:true}));return;
       }
       if(busyRef.current)return;
+      if(!pinEditorRef.current&&!infoRef.current?.videoSelection&&!dragRef.current&&!text.gestureRef.current&&
+          !e.ctrlKey&&!e.metaKey&&!e.altKey&&e.code==="KeyP"&&infoRef.current?.cursorImage){
+        e.preventDefault();
+        if(!e.repeat){cursorEnabledRef.current=!cursorEnabledRef.current;setCursorEnabled(cursorEnabledRef.current);}
+        return;
+      }
       if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.code==="KeyV"&&!e.repeat&&selRef.current&&!dragRef.current&&!pinEditorRef.current&&!busyRef.current){e.preventDefault();void keyActions.current.video();return;}
       if(infoRef.current?.videoSelection&&selRef.current&&!dragRef.current){
         if(e.key==="Enter"){e.preventDefault();if(!e.repeat)void recordingAction.current();return;}
@@ -1882,6 +1911,11 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
         <div className="capture__placeholder" />
       )}
 
+      {cursorEnabled&&info?.cursorImage&&!info.videoSelection?<img className="capture__system-cursor"
+        src={`data:image/png;base64,${info.cursorImage.png}`} alt="" draggable={false}
+        style={{position:"absolute",pointerEvents:"none",left:(sourcePlacement?.x??0)+info.cursorImage.x/k,
+          top:(sourcePlacement?.y??0)+info.cursorImage.y/k,width:info.cursorImage.width/k,height:info.cursorImage.height/k}}/>:null}
+
       {/* Затемнение вне выделения */}
       {!pinEditor && dim ? (
         <>
@@ -1935,6 +1969,7 @@ export function CaptureOverlay({ pinEditor }: { pinEditor?: PinAnnotationTarget 
       {(!sel || selecting) && pointer && pixelSource && info ? <CaptureLoupe
         source={pixelSource} pointer={pointer} info={info} viewport={vp} format={colorFormat} onSample={onPixelSample} /> : null}
       {!pinEditor?<CaptureShortcuts info={info} viewport={vp} session={sessionSeq} cursor={pointerRef} motion={hintMotion}
+        cursorAvailable={!!info?.cursorImage&&!info.videoSelection} cursorEnabled={cursorEnabled}
         actionKeys={{save:actionHotkeyLabel(cfg,"save"),pin:actionHotkeyLabel(cfg,"pin"),copy:actionHotkeyLabel(cfg,"copy")}} selected={!!sel} gesture={dragRef.current?.mode??(textTool.frame?"text":undefined)} editing={!!edit}
         selectedShape={selectedId!=null} tool={tool} mode={detectionMode}/>:null}
 

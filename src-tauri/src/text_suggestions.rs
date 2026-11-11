@@ -1,10 +1,9 @@
 //! Inline templates. The platform backend owns input; this module is pure search/session logic.
 use crate::data::{AppConfig, TemplateChild, TemplateRow};
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 use std::sync::Mutex;
 use tauri::{Manager, State};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, ShortcutState};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -58,22 +57,25 @@ pub fn validate(cfg: &AppConfig) -> Result<(), String> {
         .chain([
             cfg.palette_hotkey.as_str(),
             cfg.screenshot_hotkey.as_str(),
+            cfg.palette_hotkey_secondary.as_str(),
+            cfg.screenshot_hotkey_secondary.as_str(),
             cfg.screenshot_save_hotkey.as_str(),
             cfg.screenshot_pin_hotkey.as_str(),
             cfg.screenshot_copy_hotkey.as_str(),
         ]);
     let occupied: Vec<_> = other
-        .filter_map(|h| Shortcut::from_str(h.trim()).ok())
+        .filter_map(|h| crate::mouse_hotkeys::parse(h.trim()).ok())
         .collect();
     for (label, value) in [("Включение подсказок", &s.toggle_hotkey)] {
         if value.trim().is_empty() {
             continue;
         }
-        let sc = Shortcut::from_str(value.trim())
+        let sc = crate::mouse_hotkeys::parse(value.trim())
             .map_err(|_| format!("{label}: неверная горячая клавиша"))?;
-        if sc.mods.is_empty()
+        if let crate::mouse_hotkeys::Shortcut::Keyboard(keyboard)=sc {
+        if keyboard.mods.is_empty()
             && !matches!(
-                sc.key,
+                keyboard.key,
                 Code::F1
                     | Code::F2
                     | Code::F3
@@ -103,8 +105,9 @@ pub fn validate(cfg: &AppConfig) -> Result<(), String> {
                 "{label}: используйте модификатор или функциональную клавишу"
             ));
         }
-        if sc.key == Code::F12 || sc.mods.contains(Modifiers::SUPER) {
+        if keyboard.key == Code::F12 || keyboard.mods.contains(Modifiers::SUPER) {
             return Err(format!("{label}: комбинация зарезервирована системой"));
+        }
         }
         if occupied.contains(&sc) {
             return Err(format!("{label}: сочетание уже используется в Snipcast"));
@@ -359,10 +362,10 @@ pub fn prepare(app: &tauri::AppHandle, cfg: &AppConfig) -> Result<(), String> {
             if *rt.hotkeys_paused.lock().map_err(|e| e.to_string())? {
                 break;
             }
-            if value.trim().is_empty()
+            if value.trim().is_empty() || crate::mouse_hotkeys::is_mouse(value)
                 || installed
                     .iter()
-                    .any(|x| Shortcut::from_str(x).ok() == Shortcut::from_str(value).ok())
+                    .any(|x| crate::mouse_hotkeys::parse(x).ok() == crate::mouse_hotkeys::parse(value).ok())
             {
                 continue;
             }
@@ -387,7 +390,7 @@ pub fn prepare(app: &tauri::AppHandle, cfg: &AppConfig) -> Result<(), String> {
         for value in installed.iter().filter(|x| {
             !requested
                 .iter()
-                .any(|r| Shortcut::from_str(r).ok() == Shortcut::from_str(x).ok())
+                .any(|r| crate::mouse_hotkeys::parse(r).ok() == crate::mouse_hotkeys::parse(x).ok())
         }) {
             let _ = app.global_shortcut().unregister(value.as_str());
         }
@@ -430,6 +433,7 @@ pub fn configure(app: &tauri::AppHandle, cfg: &AppConfig) {
 }
 #[tauri::command]
 pub fn snipcast_suggestions_hotkeys_pause(app: tauri::AppHandle) {
+    crate::mouse_hotkeys::pause(&app,crate::mouse_hotkeys::SUGGESTIONS,true);
     let rt = app.state::<Runtime>();
     *rt.hotkeys_paused.lock().unwrap() = true;
     for key in rt.hotkeys.lock().unwrap().drain(..) {
@@ -438,6 +442,7 @@ pub fn snipcast_suggestions_hotkeys_pause(app: tauri::AppHandle) {
 }
 #[tauri::command]
 pub fn snipcast_suggestions_hotkeys_resume(app: tauri::AppHandle) -> Result<(), String> {
+    crate::mouse_hotkeys::pause(&app,crate::mouse_hotkeys::SUGGESTIONS,false);
     *app.state::<Runtime>()
         .hotkeys_paused
         .lock()

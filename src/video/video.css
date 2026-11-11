@@ -72,7 +72,8 @@ html[data-app-theme="light"] .video-editor,html[data-app-theme="light"] .video-r
 .video-export__size {margin-left:auto;color:var(--video-muted);white-space:nowrap;font-size:11px;}
 .video-editor .video-save {color:#fff;background:var(--video-accent);border-color:var(--video-accent);white-space:nowrap;}
 .video-editor .video-save:hover:not(:disabled) {background:#4558e2;}
-.video-save-wrap {position:relative;margin-left:auto;}
+.video-save-wrap {position:relative;margin-left:auto;display:flex;align-items:center;gap:8px;}
+.video-editor .video-link {white-space:nowrap;}
 .video-quick {position:absolute;right:0;bottom:calc(100% + 8px);z-index:40;width:300px;max-height:260px;overflow:auto;padding:4px;border:1px solid var(--video-border);border-radius:10px;background:var(--video-panel);box-shadow:0 6px 20px #0005;}
 .video-quick button {display:flex;flex-direction:column;align-items:stretch;text-align:left;width:100%;gap:3px;padding:8px 10px;border:0;background:transparent;}
 .video-quick button.is-hover {background:var(--video-active);}
@@ -86,5 +87,5 @@ html[data-app-theme="light"] .video-editor,html[data-app-theme="light"] .video-r
 .capture__video-config select {font:inherit;color:#e8e8ec;background:#16161c;border:1px solid #3a3a44;border-radius:7px;padding:5px;}
 .capture[data-capture-theme="light"] .capture__video-config {color:#586477;}
 .capture[data-capture-theme="light"] .capture__video-config select {color:#2c3544;background:#f8f9fc;border-color:#ccd3de;}
-@media(max-width:740px){.video-export>label{flex-direction:column;align-items:flex-start;gap:4px}.video-transport__details{max-width:45%;text-align:right}.video-timeline__duration{display:none}.video-export{gap:8px}.video-export__size{margin-left:0}.video-export .video-save{margin-left:auto}}
+@media(max-width:740px){.video-export>label{flex-direction:column;align-items:flex-start;gap:4px}.video-transport__details{max-width:45%;text-align:right}.video-timeline__duration{display:none}.video-export{gap:8px}.video-export__size{margin-left:0}.video-export .video-save{margin-left:0}}
 @media(prefers-reduced-motion:reduce){.video-editor *,.video-record *{scroll-behavior:auto;}}

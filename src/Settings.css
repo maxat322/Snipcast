@@ -1186,3 +1186,32 @@ body.settings-body {
 .settings__splitter:active {
   background: rgba(81, 100, 242, 0.55);
 }
+
+/* Command settings compose the existing about header, groups, quick rows and hotkey fields. */
+.commands-settings__nav { margin-left: 16px; }
+.commands-settings__heading { padding: 24px 0 32px; gap: 8px; }
+.commands-settings__heading h2,.commands-settings__heading p { margin: 0; }
+.commands-settings__heading p { color: #9a9aa8; }
+.commands-settings__icon { font-size: 40px; line-height: 1.2; }
+.commands-settings__list { margin-top: 12px; }
+.commands-settings__row.settings__option { display:grid; grid-template-columns:minmax(84px,1fr) 30px 190px 44px; gap:8px; margin:0; padding:10px 0; align-items:center; }
+.commands-settings__list-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.commands-settings__list-header h3 { margin:0; }
+.commands-settings__section-header { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+.commands-settings__section-header h2 { margin:0; }
+.commands-settings__configure { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; }
+.commands-settings__row + .commands-settings__row { border-top:1px solid #2a2a32; }
+.commands-settings__name { display:flex; gap:10px; align-items:center; min-width:0; font-size:13px; }
+.commands-settings__name strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.commands-settings__name img { width:20px; height:20px; object-fit:contain; }
+.commands-settings__row.settings__quick-row input[type="text"] { width:100%; min-width:0; }
+.commands-settings__hotkey { gap:4px; }
+.commands-settings__hotkey .settings__hotkey-clear { width:20px; min-width:20px; padding:0; height:24px; }
+
+.commands-settings__row .commands-settings__hotkey input[type="text"] { flex:1; width:0; }
+
+/* Both bindings stay on the existing settings row and reuse its input/button surfaces. */
+.settings__hotkey-pair { grid-column: 2 / -1; display:flex; gap:12px; min-width:0; align-items:center; }
+.settings__hotkey-pair .settings__hotkey-input { flex:1; min-width:0; width:0; }
+.settings__hotkey-pair .settings__hotkey-clear { flex:0 0 40px; }
+@media (max-width:800px) { .settings__hotkey-pair { grid-column:1 / -1; } }

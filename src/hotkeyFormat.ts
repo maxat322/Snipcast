@@ -1,3 +1,4 @@
+export type RecordedKey = Pick<KeyboardEvent, "type"|"code"|"key"|"keyCode"|"repeat"|"shiftKey"|"altKey"|"ctrlKey"|"metaKey">;
 /** Физический код клавиши → токен для строки global-hotkey / Tauri (как в parse_key). */
 function codeToMainKey(code: string): string | null {
   if (code.startsWith("Key")) return code.slice(3);
@@ -68,7 +69,7 @@ const MODIFIER_ONLY_CODES = new Set([
   "MetaRight",
 ]);
 
-function isPrintScreen(e: KeyboardEvent): boolean {
+function isPrintScreen(e: RecordedKey): boolean {
   // Windows/WebView2 can deliver only keyup with an empty physical code.
   // keyCode 44 is VK_SNAPSHOT, retained for runtimes with an unidentified key.
   return e.code === "PrintScreen" || e.key === "PrintScreen" || e.keyCode === 44;
@@ -78,7 +79,7 @@ function isPrintScreen(e: KeyboardEvent): boolean {
  * Собирает строку вида CommandOrControl+Shift+Backslash для Rust.
  * Использует e.code (физическая клавиша), поэтому работает на русской раскладке.
  */
-export function keyboardEventToTauriHotkey(e: KeyboardEvent): string | null {
+export function keyboardEventToTauriHotkey(e: RecordedKey): string | null {
   if (e.repeat) return null;
   if (MODIFIER_ONLY_CODES.has(e.code)) return null;
 
@@ -101,7 +102,7 @@ export function createHotkeyRecorder() {
     reset() {
       printScreenRecordedOnDown = false;
     },
-    record(e: KeyboardEvent): string | null {
+    record(e: RecordedKey): string | null {
       if (e.type === "keyup") {
         if (!isPrintScreen(e)) return null;
         const alreadyRecorded = printScreenRecordedOnDown;
@@ -116,6 +117,16 @@ export function createHotkeyRecorder() {
   };
 }
 
+/** Mouse buttons use their own native shortcut tokens, preserving keyboard modifiers. */
+export function mouseEventToHotkey(e:Pick<MouseEvent,'buttons'|'ctrlKey'|'shiftKey'|'altKey'|'metaKey'>):string|null {
+  const buttons=e.buttons&31;
+  if(!buttons||(!e.ctrlKey&&!e.shiftKey&&!e.altKey&&!e.metaKey&&(buttons===1||buttons===2)))return null;
+  const parts:string[]=[];
+  if(e.shiftKey)parts.push('Shift');if(e.altKey)parts.push('Alt');if(e.ctrlKey||e.metaKey)parts.push('CommandOrControl');
+  for(const [bit,name] of [[1,'MouseLeft'],[2,'MouseRight'],[4,'MouseMiddle'],[8,'Mouse4'],[16,'Mouse5']] as const)if(buttons&bit)parts.push(name);
+  return parts.join('+');
+}
+
 /** Отображение в поле настроек: Ctrl+Shift+\ и т.п. */
 export function tauriHotkeyToDisplay(tauri: string): string {
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
@@ -127,6 +138,8 @@ export function tauriHotkeyToDisplay(tauri: string): string {
 
   for (const seg of segments) {
     const u = seg.toLowerCase();
+    const mouse:Record<string,string>={mouseleft:'ЛКМ',mouseright:'ПКМ',mousemiddle:'СКМ',mouse4:'Мышь 4',mouse5:'Мышь 5'};
+    if(mouse[u]){out.push(mouse[u]);continue;}
     if (u === "commandorcontrol") {
       out.push(isMac ? "⌘" : "Ctrl");
       continue;

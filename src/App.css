@@ -67,6 +67,18 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* Scrolling lists are one constant no-drag block. Otherwise every row is a
+   hole in the window drag region; scrolling moves the holes, and WebView2
+   re-applies the region synchronously on the app's UI thread on every frame.
+   That blocked IPC and keyboard delivery for seconds while an arrow was held
+   (list kept moving after release, history paging froze at the loaded end). */
+.palette .palette__list,
+.palette .commands__results,
+.palette .commands__history,
+.palette .commands__emoji {
+  -webkit-app-region: no-drag;
+}
+
 .palette input,
 .palette textarea {
   user-select: text;
@@ -232,21 +244,46 @@ body {
 }
 
 .palette__breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   padding-bottom: 6px;
 }
 
-.palette__back {
-  border: none;
-  background: transparent;
-  color: #8b8b98;
-  font: inherit;
+.palette__breadcrumb-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #aeb0be;
   font-size: 13px;
-  cursor: pointer;
+}
+
+.palette__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
   padding: 0;
+  border: 1px solid #3a3a44;
+  border-radius: 8px;
+  background: #16161c;
+  color: #aeb0be;
+  cursor: pointer;
 }
 
 .palette__back:hover {
-  color: #c4c4ce;
+  border-color: #5164f2;
+  background: #2a2a32;
+  color: #f4f4f8;
+}
+
+.palette__back:focus-visible {
+  outline: 2px solid #5164f2;
+  outline-offset: 2px;
 }
 
 .palette__item-title {

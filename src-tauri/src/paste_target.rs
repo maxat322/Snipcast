@@ -72,8 +72,17 @@ pub fn paste_into_previous(target: &PasteTarget) {
             .or(target.last_foreign_hwnd)
             // Fallback: after hiding our windows, foreground may already be the target.
             .or_else(win::foreground_hwnd_if_other_process);
+        #[cfg(feature = "inline-qa")]
+        eprintln!(
+            "[qa-paste] hwnd={hwnd:?} foreground={:?}",
+            win::foreground_hwnd_if_other_process()
+        );
         if let Some(hwnd) = hwnd {
-            let _ = win::activate_and_paste_ctrl_v(hwnd);
+            let result = win::activate_and_paste_ctrl_v(hwnd);
+            #[cfg(feature = "inline-qa")]
+            eprintln!("[qa-paste] result={result:?}");
+            #[cfg(not(feature = "inline-qa"))]
+            let _ = result;
         } else {
             eprintln!("[snipcast] win_hwnd отсутствует — не удалось определить окно для вставки");
         }
@@ -216,12 +225,19 @@ mod win {
                 }
             }
         }
+        #[cfg(feature = "inline-qa")]
+        eprintln!(
+            "[qa-paste] focused={focused} foreground={:?}",
+            unsafe { GetForegroundWindow() }
+        );
 
         if !focused {
             // Some apps still accept WM_PASTE even when focus transfer is flaky.
-            unsafe {
-                SendMessageW(hwnd, WM_PASTE, 0, 0);
-            }
+            let sent = unsafe { SendMessageW(hwnd, WM_PASTE, 0, 0) };
+            #[cfg(feature = "inline-qa")]
+            eprintln!("[qa-paste] WM_PASTE fallback sent={sent}");
+            #[cfg(not(feature = "inline-qa"))]
+            let _ = sent;
             return Ok(());
         }
 

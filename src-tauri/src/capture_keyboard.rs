@@ -86,6 +86,7 @@ fn rules(cfg: &AppConfig) -> [u32; 512] {
         "Escape",
         "Tab",
         "A",
+        "P",
         "V",
         "Minus",
         "Equal",
@@ -146,6 +147,7 @@ mod win {
     static GENERATION: AtomicU32 = AtomicU32::new(0);
     static MODIFIER_KEYS: AtomicU32 = AtomicU32::new(0);
     static SUSPENDED: [AtomicBool; 64] = [const { AtomicBool::new(true) }; 64];
+    static RECORDING: [AtomicBool; 64] = [const { AtomicBool::new(false) }; 64];
     static TEXT: [AtomicBool; 64] = [const { AtomicBool::new(false) }; 64];
     static RULES: [AtomicU32; 512] = [const { AtomicU32::new(0) }; 512];
     static PRESSED: [AtomicUsize; 512] = [const { AtomicUsize::new(0) }; 512];
@@ -282,6 +284,7 @@ mod win {
         let active =
             current.is_some_and(|s| !SUSPENDED[s].load(Relaxed)) && IsWindowVisible(hwnd) != 0;
         let text_input = current.is_some_and(|s| TEXT[s].load(Relaxed));
+        let recording = current.is_some_and(|s| RECORDING[s].load(Relaxed));
         let mods = modifiers()
             | if event.flags & LLKHF_ALTDOWN != 0 {
                 4
@@ -308,13 +311,22 @@ mod win {
         if old != 0 && !active {
             return 1;
         }
-        if !active || matches!(event.vkCode, 0x10 | 0x11 | 0x12 | 0xa0..=0xa5 | 0x5b | 0x5c) {
+        if !active {
             return next(code, message, pointer);
+        }
+        if modifier.is_some() {
+            // Keep Alt from transferring focus into the native window menu
+            // while recording. Modifier state above still describes the chord.
+            return if recording {
+                1
+            } else {
+                next(code, message, pointer)
+            };
         }
         let editing = text_input
             && mods & 8 == 0
             && matches!(event.vkCode,0x30..=0x5a|0x60..=0x6f|0xba..=0xe2|8|9|13|0x20..=0x2e);
-        if old == 0 && RULES[index].load(Relaxed) & (1 << mods) == 0 && !editing {
+        if old == 0 && RULES[index].load(Relaxed) & (1 << mods) == 0 && !editing && !recording {
             return next(code, message, pointer);
         }
         if up {
@@ -410,6 +422,24 @@ mod win {
         data: usize,
     ) -> isize {
         let context = &*(data as *const Context);
+        // WebView2 can hand Alt+Space to the parent as SC_KEYMENU before a
+        // DOM key event exists. Suppress that menu only for the active recorder.
+        if message == WM_SYSCOMMAND
+            && wparam & 0xfff0 == SC_KEYMENU as usize
+            && lparam == 0x20
+            && slot(hwnd).is_some_and(|s| RECORDING[s].load(Relaxed))
+        {
+            use tauri::Emitter;
+            let _ = context.window.emit(
+                "snipcast://hotkey-recorded",
+                serde_json::json!({
+                    "type":"keydown", "code":"Space", "key":" ", "keyCode":32, "repeat":false,
+                    "altKey":true, "ctrlKey":GetAsyncKeyState(0x11)<0,
+                    "shiftKey":GetAsyncKeyState(0x10)<0, "metaKey":false
+                }),
+            );
+            return 0;
+        }
         if message == ROUTE {
             let word = wparam as u32;
             let up = word & (1 << 21) != 0;
@@ -425,6 +455,21 @@ mod win {
             let mods = (word >> 17) & 15;
             let extended = word & (1 << 16) != 0;
             let (code, mut key, location) = names(vk, extended);
+            if slot(hwnd).is_some_and(|s| RECORDING[s].load(Relaxed)) {
+                // Alt+Space sent back as a WebView system key opens Windows' menu.
+                // Record the physical chord directly instead of redispatching it.
+                use tauri::Emitter;
+                let _ = context.window.emit(
+                    "snipcast://hotkey-recorded",
+                    serde_json::json!({
+                        "type": if up {"keyup"} else {"keydown"}, "code": code, "key": key,
+                        "keyCode": vk, "repeat": word & (1 << 22) != 0,
+                        "ctrlKey": mods & 1 != 0, "shiftKey": mods & 2 != 0,
+                        "altKey": mods & 4 != 0, "metaKey": mods & 8 != 0
+                    }),
+                );
+                return 0;
+            }
             let mut state = [0u8; 256];
             GetKeyboardState(state.as_mut_ptr());
             state[vk as usize] |= 0x80;
@@ -547,8 +592,29 @@ mod win {
         EPOCHS[s].store(GENERATION.load(Relaxed), Relaxed);
         SUSPENDED[s].store(false, Relaxed);
         TEXT[s].store(false, Relaxed);
+        RECORDING[s].store(false, Relaxed);
         WINDOWS[s].store(hwnd as usize, Relaxed);
         Ok(())
+    }
+    pub fn record(
+        window: &tauri::WebviewWindow,
+        cfg: &AppConfig,
+        active: bool,
+    ) -> Result<(), String> {
+        if active {
+            show(window, cfg)?;
+        }
+        if let Some(s) = window.hwnd().ok().and_then(|h| slot(h.0)) {
+            RECORDING[s].store(active, Relaxed);
+            SUSPENDED[s].store(!active, Relaxed);
+        }
+        Ok(())
+    }
+    pub fn recording_modifiers(hwnd:usize)->Option<u8> {
+        slot(hwnd as HWND).filter(|s|RECORDING[*s].load(Relaxed)).map(|_|modifiers() as u8)
+    }
+    pub fn mouse_ready(hwnd:usize)->bool {
+        slot(hwnd as HWND).is_some_and(|s|!SUSPENDED[s].load(Relaxed)&&!TEXT[s].load(Relaxed)&&!RECORDING[s].load(Relaxed))
     }
     pub fn close() {
         for w in &WINDOWS {
@@ -562,6 +628,15 @@ mod win {
             SUSPENDED[s].store(suspended, Relaxed);
         }
     }
+}
+
+pub fn mouse_ready(hwnd:usize)->bool {
+    #[cfg(target_os="windows")] { win::mouse_ready(hwnd) }
+    #[cfg(not(target_os="windows"))] {let _=hwnd;false}
+}
+pub fn recording_modifiers(hwnd:usize)->Option<u8> {
+    #[cfg(target_os="windows")] { win::recording_modifiers(hwnd) }
+    #[cfg(not(target_os="windows"))] {let _=hwnd;None}
 }
 
 pub fn show(window: &tauri::WebviewWindow, cfg: &AppConfig) -> Result<(), String> {
@@ -594,6 +669,41 @@ pub fn snipcast_capture_keyboard_state(
     #[cfg(not(target_os = "windows"))]
     let _ = (text_input, suspended);
 }
+/// Reuse the native WebView keyboard router while a settings shortcut field
+/// records input. Windows consumes Alt+Space before normal DOM keydown.
+#[tauri::command]
+pub async fn snipcast_hotkey_recording(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, std::sync::Mutex<AppConfig>>,
+    active: bool,
+) -> Result<(), String> {
+    if window.label() != "settings" {
+        return Err("Запись клавиш доступна только в настройках".into());
+    }
+    let cfg = state.lock().map_err(|e| e.to_string())?.clone();
+    #[cfg(target_os = "windows")]
+    {
+        let target = window.clone();
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        window
+            .run_on_main_thread(move || {
+                let _ = tx.send(win::record(&target, &cfg, active));
+            })
+            .map_err(|e| e.to_string())?;
+        return tauri::async_runtime::spawn_blocking(move || {
+            rx.recv_timeout(std::time::Duration::from_secs(3))
+                .map_err(|e| e.to_string())?
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (cfg, active);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -621,6 +731,8 @@ mod tests {
     #[test]
     fn own_tools_only() {
         let r = rules(&AppConfig::default());
+        assert_ne!(r[key(Code::KeyP).unwrap()] & 1, 0);
+        assert_eq!(r[key(Code::KeyP).unwrap()] & (1 << 1), 0);
         assert_ne!(r[key(Code::NumpadSubtract).unwrap()], 0);
         assert_eq!(r[key(Code::F10).unwrap()], 0);
         assert_eq!(r[key(Code::KeyJ).unwrap()], 0);
